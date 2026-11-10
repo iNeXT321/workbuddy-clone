@@ -10,9 +10,11 @@ interface Props {
   onRegenerate: (assistantId: string) => void
   onDelete: (messageId: string) => void
   onEdit: (messageId: string, newText: string) => void
+  // 递增信号：全局快捷键（Cmd+F）触发打开对话内搜索
+  openSearchSignal?: number
 }
 
-export default function ChatArea({ messages, streaming, onRegenerate, onDelete, onEdit }: Props) {
+export default function ChatArea({ messages, streaming, onRegenerate, onDelete, onEdit, openSearchSignal }: Props) {
   const { t } = useTranslation()
   const endRef = useRef<HTMLDivElement>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -22,10 +24,19 @@ export default function ChatArea({ messages, streaming, onRegenerate, onDelete, 
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [hitIndex, setHitIndex] = useState(0)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // 全局快捷键触发打开对话内搜索（Cmd+F）
+  useEffect(() => {
+    if (openSearchSignal && openSearchSignal > 0) {
+      setSearchOpen(true)
+      setTimeout(() => searchInputRef.current?.focus(), 0)
+    }
+  }, [openSearchSignal])
 
   // 命中集合：内容包含查询串（不区分大小写）的消息 id
   const hits = useMemo(() => {
@@ -93,6 +104,7 @@ export default function ChatArea({ messages, streaming, onRegenerate, onDelete, 
       {searchOpen && (
         <div className="chat-search">
           <input
+            ref={searchInputRef}
             className="chat-search-input"
             autoFocus
             value={query}

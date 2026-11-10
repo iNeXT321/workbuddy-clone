@@ -14,22 +14,44 @@ interface Props {
   onClose: () => void
 }
 
-type TabKey = 'account' | 'model'
+type TabKey = 'account' | 'model' | 'shortcuts'
+
+// 快捷键清单（对齐原版 settings.keyboardShortcuts.actions.*；本期只读展示）
+const MOD = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform) ? '⌘' : 'Ctrl'
+const SHORTCUTS: Array<{ category: string; command: string; binding: string }> = [
+  { category: 'general', command: 'shortcuts.actions.newConversation', binding: `${MOD} N` },
+  { category: 'general', command: 'shortcuts.actions.openSettings', binding: `${MOD} ,` },
+  { category: 'general', command: 'shortcuts.actions.toggleSidebar', binding: `${MOD} K` },
+  { category: 'navigation', command: 'shortcuts.actions.openSearch', binding: `${MOD} K` },
+  { category: 'navigation', command: 'shortcuts.actions.searchInConversation', binding: `${MOD} F` },
+  { category: 'editing', command: 'shortcuts.actions.sendMessage', binding: 'Enter' },
+  { category: 'editing', command: 'shortcuts.actions.newline', binding: 'Shift + Enter' },
+  { category: 'editing', command: 'shortcuts.actions.stopGeneration', binding: 'Esc' }
+]
 
 export default function SettingsPanel({ settings, onSave, onClose }: Props) {
   const { t } = useTranslation()
   const [form, setForm] = useState<AppSettings>(settings)
   const [tab, setTab] = useState<TabKey>('account')
+  const [shortcutQuery, setShortcutQuery] = useState('')
 
   const TABS: Array<{ key: TabKey; label: string }> = [
     { key: 'account', label: t('settings.tab.account') },
-    { key: 'model', label: t('settings.tab.model') }
+    { key: 'model', label: t('settings.tab.model') },
+    { key: 'shortcuts', label: t('settings.tab.shortcuts') }
   ]
 
   const save = () => {
     onSave(form)
     onClose()
   }
+
+  // 快捷键搜索过滤
+  const shortcutRows = SHORTCUTS.filter((s) => {
+    const q = shortcutQuery.trim().toLowerCase()
+    if (!q) return true
+    return s.command.toLowerCase().includes(q) || t(s.command).toLowerCase().includes(q) || s.binding.toLowerCase().includes(q)
+  })
 
   return (
     <div className="settings-overlay" onClick={onClose}>
@@ -138,6 +160,42 @@ export default function SettingsPanel({ settings, onSave, onClose }: Props) {
                     ))}
                   </select>
                 </label>
+              </>
+            )}
+            {tab === 'shortcuts' && (
+              <>
+                <div className="field">
+                  <span>{t('shortcuts.title')}</span>
+                  <input
+                    value={shortcutQuery}
+                    onChange={(e) => setShortcutQuery(e.target.value)}
+                    placeholder={t('shortcuts.searchPlaceholder')}
+                  />
+                </div>
+                {shortcutRows.length === 0 ? (
+                  <div className="empty-hint">{t('shortcuts.noResults')}</div>
+                ) : (
+                  <table className="shortcut-table">
+                    <thead>
+                      <tr>
+                        <th>{t('shortcuts.columnCommand')}</th>
+                        <th>{t('shortcuts.columnBinding')}</th>
+                        <th>{t('shortcuts.columnAction')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {shortcutRows.map((s) => (
+                        <tr key={s.command + s.binding}>
+                          <td>{t(`shortcuts.category.${s.category}`)}</td>
+                          <td>
+                            <kbd className="kbd">{s.binding}</kbd>
+                          </td>
+                          <td>{t(s.command)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </>
             )}
           </div>

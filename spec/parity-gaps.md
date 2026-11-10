@@ -402,3 +402,46 @@
 ---
 
 > 闭环状态（第四轮）：GAP-027 / 028 **resolved 并复检通过**。**open 清零。**
+
+---
+
+## 第五轮监督（输入与效率层 · i18n 词典驱动）
+
+> 依据：§5.2 词典 `settings.keyboardShortcuts.*`（含 `actions.*` 30+ 动作）、`mention.*`（14 条）、`input.wbAdd.*`。事实：原版有**完整快捷键体系**（可配置、含冲突检测）、**@ 上下文引用**、**/ 斜杠命令**。
+
+### GAP-029 · 缺失全局快捷键（Esc 停止 / Cmd+F 对话搜索 / Cmd+N 新对话 / Cmd+, 设置）
+
+- **严重级**：P1（效率核心）
+- **维度**：渲染层 / 交互
+- **基线依据**：original-baseline.md §5.2 —— `settings.keyboardShortcuts.actions.stopGeneration`=停止生成、`searchInConversation`=对话内搜索、`newConversation`=新建对话、`openSettings`=打开设置、`sendMessage`=发送消息、`newline`=输入时换行
+- **现状**：无任何全局快捷键；「停止生成」「对话内搜索」「新建对话」「设置」都只能用鼠标点。
+- **期望**：实现核心快捷键（对齐基线动作语义）：`Esc` 停止生成/关闭浮层、`Cmd/Ctrl+F` 对话内搜索、`Cmd/Ctrl+N` 新建对话、`Cmd/Ctrl+,` 打开设置、`Cmd/Ctrl+K` 侧栏搜索聚焦。
+- **验证方法**：`grep -nE "metaKey|ctrlKey" src/renderer/src/App.tsx` 命中；快捷键动作与基线 `actions.*` 语义对应。
+- **修改文件**：src/renderer/src/App.tsx（全局 keydown 监听 + 分发）、src/renderer/src/i18n/index.ts（`shortcut.*` 文案）
+- **状态**：resolved
+
+### GAP-030 · 缺失设置页「快捷键」面板
+
+- **严重级**：P2（可发现性）
+- **维度**：渲染层 / 设置
+- **基线依据**：original-baseline.md §5.2 —— `settings.keyboardShortcuts.title`=快捷键、`columnCommand/columnBinding/columnAction`、`noResults`、`conflict`
+- **现状**：设置面板只有「账户与连接」「模型」两个标签，无快捷键查看。
+- **期望**：设置面板新增「快捷键」标签，以「命令 / 按键绑定 / 操作」三列表格展示当前生效快捷键（只读展示，只读即对齐核心）。
+- **验证方法**：`grep -nE "keyboardShortcuts|shortcuts" src/renderer/src/components/SettingsPanel.tsx` 命中。
+- **修改文件**：src/renderer/src/components/SettingsPanel.tsx（新增 tab + 表格）、i18n（`settings.keyboardShortcuts.*` 对齐基线）、global.css（`.shortcut-table`）
+- **状态**：resolved
+
+### GAP-031 · 缺失 `@` 上下文引用（对话中的文件）
+
+- **严重级**：P2（输入体验）
+- **维度**：渲染层 / 对话链路
+- **基线依据**：original-baseline.md §5.2 —— `mention.file.description`=选择文件和文件夹、`mention.file.placeholder`=添加文件作为回答背景、`mention.file.sessionGroup`=对话中的文件、`mention.file.searchEmpty`=无搜索结果
+- **现状**：输入框无 `@` 触发，无法引用对话中的文件作为回答背景。
+- **期望**：输入 `@` 触发引用选择面板，列出「对话中的文件」分组；选中后以 chip 形式挂到输入框，随消息发送（作为上下文注入）。
+- **验证方法**：`grep -nE "mention|@reference" src/renderer/src/components/Composer.tsx` 命中。
+- **修改文件**：src/renderer/src/components/Composer.tsx（`@` 触发 + 面板 + chip）、i18n（`mention.*` 对齐基线）、global.css（`.mention-panel` / `.mention-item`）
+- **状态**：resolved
+
+---
+
+> 闭环状态（第五轮）：GAP-029 / 030 / 031 **resolved 并复检通过**。**open 清零。**
