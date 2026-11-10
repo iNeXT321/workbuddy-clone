@@ -144,6 +144,59 @@ MediaPreviewContext     Icons
   - **文档选区（事实，超范围）**：`chat.documentSelection.*`（本地文档/腾讯文档/幻灯片/表格选区）、`chat.pendingEditConfirm.*`（待确认修改想法）——属 Office 场景长尾。
   - **模型可用性护栏（事实）**：`chat.modelUnavailableSwitchModel`、`chat.imageNotSupported`、`chat.gifNotSupported`（提示切 kimi/minimax）。
 
+### 5.3 第四次补证：输入区能力层 + 停止原因 + 阶段进度（第七轮监督依据）
+
+> 方法延续 §5.2：继续以 i18n 词典（12,049 条）为权威能力清单，本轮聚焦 `input.wbAdd.*`（124 条）、`error.stopReason.*`、`progress.phase.*`（195 条）、`errorBanner.*`（43 条）。
+
+**A. 输入区「+ 更多操作」面板（事实）—— `input.wbAdd.*`**
+
+- `input.wbAdd.title`=`更多操作`、`input.wbAdd.tooltip`=`可添加文件、专家、技能、连接器`、`input.wbAdd.addFiles`=`添加文件`。
+- 面板含**七大分组**（每项均有独立空态/搜索/置顶文案）：
+  1. **应用** `application`（分组 `group.currentTask`=本任务 / `group.workspace`=本工作区其他任务；状态 `never`=未发布 / `published`=已发布 / `unpublished`=已下线）
+  2. **专家** `experts`（`empty`=暂无可用专家、`pin`/`unpin`、`summonMore`=召唤更多专家、`searching`=搜索中…）
+  3. **技能** `skills`（`addLocal`=从本地添加技能、`manage`=管理技能、`marketSectionTitle`=推荐、`personalTag`=个人 / `teamTag`=团队、`installSuccess`=「{name}」安装成功）
+  4. **连接器** `connectors`（`connectTip`=连接、`connecting`=正在连接、`personalTag`/`teamTag`、错误态 `errorAuthExpired`=授权已过期 / `errorReauthorize`=重新授权 / `errorUpgradeRequired`=需升级版本 / `errorContactAdmin`=当前不可用、`summonMore`=管理连接器）
+  5. **技能插件** `geniePlugins`（`official`=官方 / `custom`=自建、`upload`=上传插件、错误 `yamlParse`=YAML 解析失败 / `missingSkillFile`=压缩包中缺少 skill.md / `interopTip`=应用技能暂时与 WorkBuddy 通用技能不互通）
+  6. **引用对话中的文件** `referenceFiles`（`empty`=当前对话中暂无文件）
+  7. **模式** `mode`（三工作模式，已在 §5.2 / GAP-022 对齐）+ **权限** `permission`
+- `input.wbAdd.submenu.placeholder`=`功能开发中…`（原版存在未完成子菜单，说明面板是**渐进式**的）。
+
+**B. 完全访问权限（事实）—— `input.wbAdd.permission.*`**
+
+- `fullAccess`=`允许完全访问`、`tooltip.fullAccess`=「开启后，WorkBuddy 可直接执行更多操作，如安装依赖、联网拉包、打开浏览器或本机应用等」。
+- `description.default`=「当前为默认权限，所有操作都会在安全沙箱约束内进行，超出范围会请求你的允许」；`description.fullAccess`=「当前客户端内所有任务已开启完全访问权限，请注意数据安全，仅建议执行可信任的任务」。
+- **确认弹窗**：`confirm.title`=`确认允许完全访问？`、`confirm.desc`=「开启完全访问后，所有任务将减少确认步骤并直接操作您的电脑，请谨慎操作。包括以下内容：」+ 三项能力：
+  - `capability.files`=文件操作 → 「读取、创建、修改、上传或删除此计算机上任意位置的文件」
+  - `capability.internet`=访问互联网 → 「访问网站、发送数据并使用已启用的连接器」
+  - `capability.terminal`=终端命令 → 「运行命令、安装软件和更改系统设置」
+- `confirm.checkbox`=`我已了解风险，并对自己的数据安全负责`（**必须勾选**才能确认）、`confirm.ok`=`允许完全访问`、`confirm.cancel`=`取消`。
+
+**C. 输入区 chips 与提示（事实）**
+
+- `input.modeChip.clear`=`退出{mode}模式`、`input.expertChip.clear`=`取消选中专家 {name}`、`input.connectorChip.empty`=`暂无已连接的应用`、`input.connectorChip.popoverLabel`=`已连接的应用`、`input.connectorChip.toggle`=`关闭 {name}`。
+- `input.externalModelWarning`=`使用外部模型，注意数据安全`（**外部模型安全提示条**）。
+- `input.wbStatusChips.*`：`designStyle.label`=设计风格、`imageMode.label`=补图方式（`ai.label`=AI 生图 / `placeholder.label`=色块占位、`header`=「你提供的图片素材不足时，WorkBuddy 如何处理？」、`lockedByPoster`=视觉海报默认使用 AI 生图）。
+
+**D. 输入占位与快捷键（事实）**
+
+- `chat.input.placeholder`=`输入消息...`；`chat.input.placeholder.workbuddy`=「今天帮你做些什么？**@ 添加上下文，/调用技能与指令**」；`chat.input.placeholder.quickQa`=「快速问答模式不消耗积分，可解答简单问题但不支持复杂任务」。
+- `chat.input.sendShortcutTooltip`=「{sendShortcut} 发送，{newlineShortcut} 换行」（**用户可配置**）；`chat.input.insertQueueShortcutTooltip`=「{sendShortcut} 发送，{insertQueueShortcut} 插入队列」。
+- **`/` 调用技能与指令（事实）**：占位文案明确「/调用技能与指令」→ 输入 `/` 唤起**技能与指令面板**；`progress.phase.*.SlashCommand`=`正在准备执行命令`。
+- `chat.send.licenseUnavailableTooltip`=企业 License 已过期；`chat.sessionBusyRetryLater`=「当前回复还没结束，请稍后再发送」。
+
+**E. 停止原因分类（事实）—— `error.stopReason.*`**
+
+- `authError`=「身份验证失败或权限不足，请重新登录后再试」、`generic`=「请求未能完成，请重试」、`maxTokens`=「响应因达到最大 token 限制而被截断。您可以继续对话或要求更简洁的回复」、`maxTurnRequests`=「已超过单轮对话允许的最大模型请求次数」、`modelService`=「模型服务返回异常，请重试或稍后再试」、`network`=「网络连接异常或服务暂时不可用，请稍后重试」、`refusal`=「Agent 拒绝继续执行。这可能是由于内容策略限制或其他限制」、`unknown`=「请求以意外状态完成：{stopReason}」。
+- `error.rateLimitCap.continuePrompt`=`请继续完成未完成的任务。`（与 `chat.retryMessage` 同义 → 触顶后可**一键续跑**）。
+
+**F. 阶段进度（事实）—— `progress.phase.*`（195 条）**
+
+- **阶段主状态**：`preparing`=准备中、`model_requesting`=等待模型响应、`model_streaming`=生成回复中、`model_done`=处理结果中、`tool_executing`=调用工具中、`waiting_for_permission`=等待授权、`waiting_for_user`=等待回复、`retrying`=重试中、`compacting`=压缩上下文中、`finalization_file_projection_sync_notify`=正在同步文件，请勿中断以免丢失数据（含 `.commit` 正在创建文件快照 / `.sync` 正在同步文件，均带「进度」）。
+- **工具三态文案（事实）**：每个工具都有 `model_streaming.{Tool}`（正在准备 X）、`tool_executing.{Tool}`（正在 X）、`waiting_for_permission.{Tool}`（等待 X 授权）三态。工具覆盖面极广：`Read`/`Write`/`Edit`/`MultiEdit`/`Glob`/`Grep`/`Bash`/`PowerShell`/`LS`/`LSP`/`WebFetch`/`WebSearch`/`ImageGen`/`ImageEdit`/`Task*`(Create/Get/List/Output/Stop/Update)/`Team*`(Create/Delete)/`Skill`/`SkillManage`/`SlashCommand`/`Agent`/`ComputerUse`/`Notebook*`/`Memory*`/`Cron*`/`EnterWorktree`/`LeaveWorktree`/`StructuredOutput`/`TodoWrite`/`ToolSearch`/`WeChatReply`/`WeComReply`/`AskUserQuestion` 等 50+；另有 ardot 设计工具族（`ardot_create_design` 等 19 个）与长尾（`show_widget`=正在渲染组件、`preview_url`=正在预览网页、`conversation_search`=正在搜索历史对话、`connect_cloud_service`=正在连接云服务、`deliver_attachments`=正在交付文件、`open_result_view`=正在打开结果视图）。
+- **`waiting_for_user` 特殊态**：`AskUserQuestion`=等待用户回复、`Bash`/`PowerShell`=等待命令输入。
+- **附加错误横幅动作（事实）—— `errorBanner.action.*`（15 项）**：`retry`=重试、`copyError`=复制错误、`editInput`=重新输入、`checkNetwork`=检查网络、`configureModel`=配置模型、`switchModel`=切换模型、`purchase`=立即购买、`applyQuota`=申请额度、`relogin`=重新登录、`newTask`=新建任务、`reupload`=重新上传、`upgradeClient`=升级客户端、`viewDocs`=查看文档、`feedback`=提交反馈、`acknowledge`=已知晓、`close`=关闭。
+- **错误码体系（事实）—— `errorCode.*`（254 条）**：原版有独立错误码命名空间，`error.code`=`错误码：`、`error.time`=`时间：`、`error.messageId`=`消息 ID：`、`error.original`=`原始错误：`（错误详情面板可展开完整上下文）。
+
 ## 6. 本基线文件的边界与限制
 
 - 本基线基于**静态产物清单 + 少量入口源码**，未完整反编译 300+ 模块。

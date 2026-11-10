@@ -160,6 +160,31 @@ export default function SettingsPanel({ settings, onSave, onClose }: Props) {
                     ))}
                   </select>
                 </label>
+                <label className="field">
+                  <span>{t('permission.label')}</span>
+                  <select
+                    value={form.permission ?? 'default'}
+                    onChange={(e) => {
+                      const v = e.target.value as AppSettings['permission']
+                      // 降级为默认权限无需确认；升级为完全访问须经弹窗勾选确认
+                      setForm({ ...form, permission: v, fullAccessAcknowledged: v === 'fullAccess' ? form.fullAccessAcknowledged : false })
+                    }}
+                  >
+                    <option value="default">{t('permission.default')}</option>
+                    <option value="fullAccess">{t('permission.fullAccess')}</option>
+                  </select>
+                </label>
+                <div className="field-hint">{t(`permission.description.${form.permission ?? 'default'}`)}</div>
+                <label className="field">
+                  <span>{t('shortcuts.actions.sendMessage')}</span>
+                  <select
+                    value={form.sendShortcut ?? 'Enter'}
+                    onChange={(e) => setForm({ ...form, sendShortcut: e.target.value as AppSettings['sendShortcut'] })}
+                  >
+                    <option value="Enter">Enter</option>
+                    <option value="Mod+Enter">{MOD}+Enter</option>
+                  </select>
+                </label>
               </>
             )}
             {tab === 'shortcuts' && (

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChatMessage } from '../../../shared/types'
+import type { ChatMessage, ProgressPhase, StopReason } from '../../../shared/types'
 import Markdown from './Markdown'
 import { toast } from '../stores/useToast'
 import { useTranslation } from '../i18n'
@@ -7,11 +7,16 @@ import { useTranslation } from '../i18n'
 interface Props {
   messages: ChatMessage[]
   streaming: boolean
+  // 当前处理阶段（对齐 progress.phase.*）
+  phase?: ProgressPhase | null
+  phaseTool?: string | null
   onRegenerate: (assistantId: string) => void
   onDelete: (messageId: string) => void
   onEdit: (messageId: string, newText: string) => void
   // 出错后重试上一轮（对齐原版 error.retry）
   onRetry: (assistantId: string) => void
+  // 继续完成未完成的任务（对齐 error.rateLimitCap.continuePrompt）
+  onContinue: () => void
   onOpenSettings: () => void
   // 递增信号：全局快捷键（Cmd+F）触发打开对话内搜索
   openSearchSignal?: number
@@ -20,10 +25,13 @@ interface Props {
 export default function ChatArea({
   messages,
   streaming,
+  phase,
+  phaseTool,
   onRegenerate,
   onDelete,
   onEdit,
   onRetry,
+  onContinue,
   onOpenSettings,
   openSearchSignal
 }: Props) {
@@ -115,6 +123,30 @@ export default function ChatArea({
   }
 
   const activeHitId = hits[hitIndex]
+  // 正在流式的最后一条 assistant（阶段文案只挂在它上面）
+  const streamingMessageId = streaming
+    ? [...messages].reverse().find((m) => m.role === 'assistant' && m.streaming)?.id
+    : undefined
+
+  // 停止原因提示（对齐 error.stopReason.*）：maxTokens / refusal 等需要提示用户
+  const stopReasonText = (r: StopReason | undefined): string => {
+    if (!r) return ''
+    const key = `stop.${r}`
+    const v = t(key)
+    return v === key ? t('stop.unknown').replace('{reason}', r) : v
+  }
+  // 可「继续完成任务」的停止原因（截断 / 触顶轮次）
+  const canContinue = (r: StopReason | undefined): boolean => r === 'maxTokens' || r === 'maxTurnRequests'
+
+  // 阶段文案：工具类阶段追加工具名（对齐 progress.phase.*.{Tool} 形态）
+  const phaseLabel = (p: ProgressPhase, tool?: string | null): string => {
+    const base = t(`phase.${p}`)
+    if (!tool) return base
+    if (p === 'tool_executing' || p === 'waiting_for_permission' || p === 'model_streaming') {
+      return `${base} · ${tool}`
+    }
+    return base
+  }
 
   return (
     <div className="chat-area">
@@ -196,7 +228,7 @@ export default function ChatArea({
                 </div>
               </div>
             ) : m.role === 'assistant' ? (
-              // 阶段化加载提示：流式中且尚无内容时显示「思考中」（对齐原版 chat.loadingText）
+              // 阶段化加载提示：流式中且尚无内容时显示当前阶段（对齐原版 progress.phase.*）
               m.streaming && !m.content ? (
                 <div className="thinking">
                   <span className="thinking-dots">
@@ -204,7 +236,7 @@ export default function ChatArea({
                     <i />
                     <i />
                   </span>
-                  {t('chat.loadingText')}
+                  {m.id === streamingMessageId && phase ? phaseLabel(phase, phaseTool) : t('chat.loadingText')}
                 </div>
               ) : (
                 <Markdown content={m.content} />
@@ -245,6 +277,17 @@ export default function ChatArea({
                     </button>
                   )}
                 </div>
+              </div>
+            )}
+            {/* 停止原因提示（对齐原版 error.stopReason.*）：正常结束但被截断/拒绝 */}
+            {!m.error && m.stopReason && (
+              <div className={`stop-banner kind-${m.stopReason}`}>
+                <span className="stop-banner-text">{stopReasonText(m.stopReason)}</span>
+                {canContinue(m.stopReason) && (
+                  <button className="msg-action primary" onClick={onContinue} disabled={streaming}>
+                    {t('stop.continue')}
+                  </button>
+                )}
               </div>
             )}
             {m.streaming && m.content && <span className="cursor" />}

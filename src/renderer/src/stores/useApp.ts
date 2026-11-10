@@ -1,5 +1,13 @@
 import { create } from 'zustand'
-import type { AppSettings, Attachment, Conversation, StreamChunk, ChatMessage, WorkMode } from '../../../shared/types'
+import type {
+  AppSettings,
+  Attachment,
+  Conversation,
+  StreamChunk,
+  ChatMessage,
+  WorkMode,
+  ProgressPhase
+} from '../../../shared/types'
 import { toast } from './useToast'
 import { useI18nStore, t } from '../i18n'
 
@@ -28,6 +36,10 @@ interface AppState {
   queue: QueuedInput[]
   // 侧边栏是否显示归档会话
   showArchived: boolean
+  // 当前处理阶段（对齐 progress.phase.*），无流式时为 null
+  phase: ProgressPhase | null
+  // 阶段对应的工具名（用于渲染 progress.phase.*.{Tool} 文案）
+  phaseTool: string | null
 
   init: () => Promise<void>
   selectConversation: (id: string) => Promise<void>
@@ -41,11 +53,13 @@ interface AppState {
   search: (query: string) => Promise<void>
   exportConversation: (id: string) => Promise<void>
   setMode: (mode: WorkMode) => void
-  sendMessage: (text: string, attachments?: Attachment[]) => Promise<void>
+  sendMessage: (text: string, attachments?: Attachment[], slashCommand?: string) => Promise<void>
   enqueue: (text: string, attachments?: Attachment[]) => void
   regenerate: (assistantId: string) => Promise<void>
   // 出错后重试：语义等同重新生成该轮（对齐原版 error.retry）
   retry: (assistantId: string) => Promise<void>
+  // 继续完成未完成的任务（对齐原版 error.rateLimitCap.continuePrompt / chat.retryMessage）
+  continueTask: () => Promise<void>
   removeMessage: (messageId: string) => Promise<void>
   editMessage: (messageId: string, newText: string) => Promise<void>
   stopStreaming: () => Promise<void>
@@ -82,7 +96,8 @@ function applyChunkToMessages(messages: ChatMessage[], chunk: StreamChunk): Chat
     }
   } else if (chunk.type === 'done') {
     if (last && last.role === 'assistant') {
-      next[next.length - 1] = { ...last, streaming: false }
+      // 正常结束：记录停止原因（对齐 error.stopReason.*，如 maxTokens=被截断）
+      next[next.length - 1] = { ...last, streaming: false, stopReason: chunk.stopReason }
     }
   } else if (chunk.type === 'error') {
     if (last && last.role === 'assistant' && last.streaming) {
@@ -112,10 +127,15 @@ export const useAppStore = create<AppState>()((set, get) => {
   wb.onStream(({ conversationId, chunk }) => {
     const { currentId, messages } = get()
     if (currentId !== conversationId) return
+    // 阶段分片只更新阶段状态，不进消息体（对齐 progress.phase.*）
+    if (chunk.type === 'phase') {
+      set({ phase: chunk.phase ?? null, phaseTool: chunk.phaseTool ?? null })
+      return
+    }
     const next = applyChunkToMessages(messages, chunk)
     set({ messages: next })
     if (chunk.type === 'done' || chunk.type === 'error') {
-      set({ streaming: false })
+      set({ streaming: false, phase: null, phaseTool: null })
       // 队列自动续发：当前回复结束后按序发出下一条（对齐原版「插入队列」）
       const q = get().queue
       if (q.length > 0) {
@@ -142,6 +162,8 @@ export const useAppStore = create<AppState>()((set, get) => {
     mode: 'default',
     queue: [],
     showArchived: false,
+    phase: null,
+    phaseTool: null,
 
     init: async () => {
       const s = await wb.getSettings()
@@ -248,7 +270,7 @@ export const useAppStore = create<AppState>()((set, get) => {
       else toast.info('已取消导出')
     },
 
-    sendMessage: async (text: string, attachments?: Attachment[]) => {
+    sendMessage: async (text: string, attachments?: Attachment[], slashCommand?: string) => {
       const { settings, currentId, streaming, messages, conversations, renameConversation, mode } = get()
       if (!settings || !currentId) return
       if (!text.trim() && (!attachments || attachments.length === 0)) return
@@ -266,7 +288,7 @@ export const useAppStore = create<AppState>()((set, get) => {
         attachments: attachments && attachments.length ? attachments : undefined
       }
       const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '', createdAt: Date.now(), streaming: true }
-      set({ messages: [...messages, userMsg, assistantMsg], streaming: true })
+      set({ messages: [...messages, userMsg, assistantMsg], streaming: true, phase: 'preparing', phaseTool: null })
 
       // 首次对话用首句更新标题（无文本时用附件名）
       const conv = conversations.find((c) => c.id === currentId)
@@ -282,6 +304,8 @@ export const useAppStore = create<AppState>()((set, get) => {
         messages: history,
         settings,
         mode,
+        slashCommand,
+        fullAccess: settings.permission === 'fullAccess',
         userMessageId: userMsg.id,
         userMessageCreatedAt: userMsg.createdAt,
         assistantMessageId: assistantMsg.id,
@@ -326,6 +350,12 @@ export const useAppStore = create<AppState>()((set, get) => {
     // 出错后重试：复用 regenerate 的回退 + 重发语义
     retry: async (assistantId: string) => {
       await get().regenerate(assistantId)
+    },
+
+    // 继续完成未完成的任务（对齐原版 error.rateLimitCap.continuePrompt / chat.retryMessage）
+    // 不截断历史，直接把「请继续完成未完成的任务。」作为新用户消息发出
+    continueTask: async () => {
+      await get().sendMessage(t('chat.retryMessage'))
     },
 
     // 删除单条消息
@@ -379,7 +409,7 @@ export const useAppStore = create<AppState>()((set, get) => {
       const { currentId } = get()
       if (currentId) await wb.chatAbort(currentId)
       // 主动停止视为放弃后续队列
-      set({ streaming: false, queue: [] })
+      set({ streaming: false, queue: [], phase: null, phaseTool: null })
     },
 
     saveSettings: async (s: AppSettings) => {

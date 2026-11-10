@@ -45,7 +45,8 @@ class Store {
         created_at INTEGER NOT NULL,
         attachments TEXT,
         error TEXT,
-        error_kind TEXT
+        error_kind TEXT,
+        stop_reason TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id);
     `)
@@ -61,6 +62,10 @@ class Store {
     }
     if (!cols.some((c) => c.name === 'error_kind')) {
       this.db.exec('ALTER TABLE messages ADD COLUMN error_kind TEXT')
+    }
+    // 兼容旧库：messages 表补 stop_reason 列（停止原因持久化）
+    if (!cols.some((c) => c.name === 'stop_reason')) {
+      this.db.exec('ALTER TABLE messages ADD COLUMN stop_reason TEXT')
     }
 
     // 兼容旧库：conversations 表补 pinned / archived 列（对齐原版置顶 / 归档）
@@ -85,7 +90,12 @@ class Store {
       temperature: 0.7,
       theme: 'dark',
       locale: 'zh-CN',
-      mode: 'default'
+      mode: 'default',
+      // 权限默认走沙箱（对齐 input.wbAdd.permission.description.default）
+      permission: 'default',
+      fullAccessAcknowledged: false,
+      // 发送快捷键默认 Enter（对齐 chat.input.sendShortcutTooltip 的默认值）
+      sendShortcut: 'Enter'
     }
     if (!row) return defaults
     try {
@@ -207,6 +217,7 @@ class Store {
       attachments: string | null
       error: string | null
       error_kind: string | null
+      stop_reason: string | null
     }>
     return {
       id: row.id,
@@ -222,7 +233,8 @@ class Store {
         createdAt: m.created_at,
         attachments: m.attachments ? (JSON.parse(m.attachments) as ChatMessage['attachments']) : undefined,
         error: m.error ?? undefined,
-        errorKind: (m.error_kind as ChatMessage['errorKind']) ?? undefined
+        errorKind: (m.error_kind as ChatMessage['errorKind']) ?? undefined,
+        stopReason: (m.stop_reason as ChatMessage['stopReason']) ?? undefined
       }))
     }
   }
@@ -231,14 +243,15 @@ class Store {
     // 幂等写入：同一消息 id 重复落库（重试/重放）时覆盖而非抛 UNIQUE 约束错误
     this.db
       .prepare(
-        `INSERT INTO messages (id, conversation_id, role, content, created_at, attachments, error, error_kind)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO messages (id, conversation_id, role, content, created_at, attachments, error, error_kind, stop_reason)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            content = excluded.content,
            created_at = excluded.created_at,
            attachments = excluded.attachments,
            error = excluded.error,
-           error_kind = excluded.error_kind`
+           error_kind = excluded.error_kind,
+           stop_reason = excluded.stop_reason`
       )
       .run(
         msg.id,
@@ -248,7 +261,8 @@ class Store {
         msg.createdAt,
         msg.attachments && msg.attachments.length ? JSON.stringify(msg.attachments) : null,
         msg.error ?? null,
-        msg.errorKind ?? null
+        msg.errorKind ?? null,
+        msg.stopReason ?? null
       )
     this.db
       .prepare('UPDATE conversations SET updated_at = ? WHERE id = ?')

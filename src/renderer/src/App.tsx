@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from './stores/useApp'
 import { useTranslation } from './i18n'
+import { toast } from './stores/useToast'
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
 import Composer from './components/Composer'
 import SettingsPanel from './components/SettingsPanel'
 import TerminalPanel from './components/TerminalPanel'
+import PermissionDialog from './components/PermissionDialog'
 import Toaster from './components/Toaster'
 
 export default function App() {
@@ -13,6 +15,7 @@ export default function App() {
   const { t } = useTranslation()
   const [showSettings, setShowSettings] = useState(false)
   const [showTerminal, setShowTerminal] = useState(false)
+  const [showPermission, setShowPermission] = useState(false)
   // 对话内搜索由快捷键触发
   const [searchSignal, setSearchSignal] = useState(0)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -29,6 +32,7 @@ export default function App() {
       const mod = e.metaKey || e.ctrlKey
       // Esc：停止生成 / 关闭浮层
       if (e.key === 'Escape') {
+        if (showPermission) return setShowPermission(false)
         if (showSettings) return setShowSettings(false)
         if (app.streaming) void app.stopStreaming()
         return
@@ -97,10 +101,13 @@ export default function App() {
         <ChatArea
           messages={app.messages}
           streaming={app.streaming}
+          phase={app.phase}
+          phaseTool={app.phaseTool}
           onRegenerate={app.regenerate}
           onDelete={app.removeMessage}
           onEdit={app.editMessage}
           onRetry={app.retry}
+          onContinue={app.continueTask}
           onOpenSettings={() => setShowSettings(true)}
           openSearchSignal={searchSignal}
         />
@@ -109,9 +116,12 @@ export default function App() {
           mode={app.mode}
           queueCount={app.queue.length}
           files={app.messages.flatMap((m) => m.attachments ?? [])}
+          permission={app.settings?.permission ?? 'default'}
+          sendShortcut={app.settings?.sendShortcut ?? 'Enter'}
           onSend={app.sendMessage}
           onStop={app.stopStreaming}
           onModeChange={app.setMode}
+          onOpenPermission={() => setShowPermission(true)}
         />
       </main>
       {showTerminal && app.currentId && (
@@ -119,6 +129,23 @@ export default function App() {
       )}
       {showSettings && app.settings && (
         <SettingsPanel settings={app.settings} onSave={app.saveSettings} onClose={() => setShowSettings(false)} />
+      )}
+      {app.settings && (
+        <PermissionDialog
+          open={showPermission}
+          current={app.settings.permission ?? 'default'}
+          onClose={() => setShowPermission(false)}
+          onConfirm={() => {
+            void app.saveSettings({ ...app.settings!, permission: 'fullAccess', fullAccessAcknowledged: true })
+            setShowPermission(false)
+            toast.success(t('permission.fullAccess'))
+          }}
+          onRevoke={() => {
+            void app.saveSettings({ ...app.settings!, permission: 'default' })
+            setShowPermission(false)
+            toast.info(t('permission.default'))
+          }}
+        />
       )}
       <Toaster />
     </div>

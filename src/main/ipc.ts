@@ -2,7 +2,7 @@ import { ipcMain, BrowserWindow, dialog, app } from 'electron'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { IPC } from '../shared/types'
-import type { StreamRequest, ChatMessage, ErrorKind } from '../shared/types'
+import type { StreamRequest, ChatMessage, ErrorKind, StopReason, ProgressPhase } from '../shared/types'
 import { getStore } from './store'
 import { streamChat, classifyError } from './llm'
 
@@ -112,24 +112,35 @@ export function registerIpcHandlers(): void {
       })
     }
 
-    // 累积 assistant 流式内容，结束后落库（含错误态：保证 DB 行与 UI 行一致）
+    // 累积 assistant 流式内容，结束后落库（含错误态/停止原因：保证 DB 行与 UI 行一致）
     let assistantContent = ''
     let assistantError: { error: string; errorKind: ErrorKind; errorHint: string } | null = null
+    let assistantStopReason: StopReason | undefined
     const assistantId = req.assistantMessageId ?? crypto.randomUUID()
     const persistAssistant = () => {
-      // 无内容且无错误 → 不落库（例如用户中途取消且未产生任何输出）
-      if (!assistantContent && !assistantError) return
+      // 无内容、无错误且无停止原因 → 不落库（例如用户中途取消且未产生任何输出）
+      if (!assistantContent && !assistantError && !assistantStopReason) return
       getStore().appendMessage(req.conversationId, {
         id: assistantId,
         role: 'assistant',
         content: assistantContent || assistantError?.error || '',
         createdAt: req.assistantMessageCreatedAt ?? Date.now(),
         error: assistantError?.error,
-        errorKind: assistantError?.errorKind
+        errorKind: assistantError?.errorKind,
+        stopReason: assistantStopReason
       })
     }
 
-    const send = (chunk: { type: string; content?: string; error?: string; errorKind?: ErrorKind; errorHint?: string }) => {
+    const send = (chunk: {
+      type: string
+      content?: string
+      error?: string
+      errorKind?: ErrorKind
+      errorHint?: string
+      stopReason?: StopReason
+      phase?: ProgressPhase
+      phaseTool?: string
+    }) => {
       if (chunk.type === 'delta') assistantContent += chunk.content ?? ''
       if (chunk.type === 'error' && chunk.error) {
         assistantError = {
@@ -138,6 +149,7 @@ export function registerIpcHandlers(): void {
           errorHint: chunk.errorHint ?? 'unknown'
         }
       }
+      if (chunk.type === 'done' && chunk.stopReason) assistantStopReason = chunk.stopReason
       if (win && !win.isDestroyed()) {
         win.webContents.send(IPC.chatStreamEvent, { conversationId: req.conversationId, chunk })
       }

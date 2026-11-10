@@ -503,3 +503,74 @@
 ---
 
 > 闭环状态（第六轮补充）：GAP-034 / 035 **resolved**（监督主动发现的复刻自身缺陷，同类于 GAP-020 的发现方式）。第六轮 **open 清零**。
+
+---
+
+## 第七轮监督：输入区能力层 + 停止原因 + 阶段进度（GAP-036~040）
+
+> 基线依据：`original-baseline.md §5.3 第四次补证`（`input.wbAdd.*` 124 条、`error.stopReason.*`、`progress.phase.*` 195 条、`errorBanner.action.*` 43 条）。
+
+### GAP-036 · 输入区缺「+ 更多操作」面板
+
+- **严重级**：P1（能力完整性）
+- **维度**：渲染层
+- **基线依据**：`original-baseline.md §5.3` —— `input.wbAdd.title`=`更多操作`、`input.wbAdd.tooltip`=`可添加文件、专家、技能、连接器`、`input.wbAdd.addFiles`=`添加文件`，以及七大分组（应用 / 专家 / 技能 / 连接器 / 插件 / 引用对话中的文件 / 模式 + 权限）。
+- **现状**：Composer 只有独立的图片按钮与模式按钮，没有任何聚合入口；原版的「+」是**输入区能力总入口**。
+- **期望**：Composer 增加「＋」按钮，打开分组面板，含 添加文件 / 引用对话中的文件 / 专家 / 技能 / 连接器 / 插件 / 权限 七项；未接入项给出 `input.wbAdd.submenu.placeholder`（功能开发中…）占位。
+- **验证方法**：`grep -nE "wbAdd-menu|wbAdd-title|WB_ADD_GROUPS" src/renderer/src/components/Composer.tsx` 命中；运行时冒烟断言 7 项文案。
+- **修改文件**：src/renderer/src/components/Composer.tsx、i18n（`wbAdd.*`）、global.css（`.wbadd-*`）
+- **状态**：resolved
+
+### GAP-037 · 无「完全访问」权限等级与确认弹窗
+
+- **严重级**：P1（安全 / 能力完整性）
+- **维度**：主进程 + 渲染层
+- **基线依据**：`original-baseline.md §5.3 §B` —— `input.wbAdd.permission.fullAccess`=`允许完全访问`、`description.default`=「所有操作都会在安全沙箱约束内进行，超出范围会请求你的允许」、`confirm.title`=`确认允许完全访问？` + 三项能力（文件操作 / 访问互联网 / 终端命令）+ `confirm.checkbox`=「我已了解风险，并对自己的数据安全负责」。
+- **现状**：`AppSettings` 只有 baseUrl/apiKey/model/temperature/theme/locale/mode，**没有权限概念**；也无沙箱/完全访问的语义区分与风险确认。
+- **期望**：`AppSettings` 增 `permission: 'default' | 'fullAccess'` 与 `fullAccessAcknowledged`；Composer 权限入口 + 设置页可选；升级为完全访问须经确认弹窗（三项能力说明 + 必须勾选免责）；`StreamRequest` 携带 `fullAccess` 供主进程记录。
+- **验证方法**：`grep -nE "PermissionLevel|permission" src/shared/types.ts` 命中；运行时冒烟断言弹窗标题/三项能力/勾选前后按钮态。
+- **修改文件**：src/shared/types.ts、src/main/store.ts（默认值）、src/renderer/src/components/PermissionDialog.tsx（新增）、Composer.tsx、SettingsPanel.tsx、App.tsx、i18n（`permission.*`）、global.css（`.permission-*` / `.modal-*`）
+- **状态**：resolved
+
+### GAP-038 · 输入区无「/ 调用技能与指令」
+
+- **严重级**：P1（能力缺口）
+- **维度**：渲染层 + 主进程
+- **基线依据**：`original-baseline.md §5.3 §D` —— `chat.input.placeholder.workbuddy`=「今天帮你做些什么？**@ 添加上下文，/调用技能与指令**」；`progress.phase.model_streaming.SlashCommand`=`正在准备执行命令`。
+- **现状**：`@` 上下文引用已实现（GAP-031），但 **`/` 完全缺失**——占位文案已声明该能力，属于明示能力缺口。
+- **期望**：输入行首 `/` 唤起指令面板（含名称 + 说明、按前缀过滤）；选中写入 `/cmd `；发送时把指令名作为 `slashCommand` 透传主进程，主进程以 system 消息告知模型按该指令语义处理；正文剥离 `/cmd` 前缀。
+- **验证方法**：`grep -nE "slash-panel|SLASH_COMMANDS|parseSlash" src/renderer/src/components/Composer.tsx src/main/llm.ts` 命中；逻辑冒烟 `parseSlashCommand` 6/6 通过。
+- **修改文件**：src/shared/types.ts（`StreamRequest.slashCommand`）、src/main/llm.ts（`parseSlashCommand` + 注入）、Composer.tsx（面板 + 解析）、useApp.ts（透传）、i18n（`slash.*`）、global.css（`.slash-*`）
+- **状态**：resolved
+
+### GAP-039 · 停止原因未分类（截断/拒绝静默结束）
+
+- **严重级**：P1（可理解性）
+- **维度**：主进程 + 渲染层
+- **基线依据**：`original-baseline.md §5.3 §E` —— `error.stopReason.*`（`maxTokens`=「响应因达到最大 token 限制而被截断。您可以继续对话或要求更简洁的回复」、`refusal`、`maxTurnRequests`、`modelService`、`network`、`authError`、`generic`、`unknown`）+ `error.rateLimitCap.continuePrompt`=`请继续完成未完成的任务。`
+- **现状**：SSE 的 `finish_reason` 被完全忽略——`length`（截断）与 `content_filter`（拒绝）都以普通 `done` 收尾，**用户看到一段戛然而止的回复却没有任何解释**。
+- **期望**：解析 `finish_reason` → `StopReason`（`length`→maxTokens、`content_filter`→refusal）；随 `done` 分片透传；渲染层展示停止原因横幅；截断/触顶场景提供「继续完成任务」按钮（走 `chat.retryMessage` 文案续跑）；停止原因落库（`stop_reason` 列）。
+- **验证方法**：`grep -nE "mapStopReason|stop_reason" src/main/llm.ts src/main/store.ts` 命中；逻辑冒烟 6/6、DB 冒烟 5/5 通过。
+- **修改文件**：src/shared/types.ts（`StopReason` + `ChatMessage.stopReason` + `StreamChunk.stopReason`）、src/main/llm.ts（`mapStopReason`）、src/main/store.ts（`stop_reason` 列 + ALTER + upsert + 读回）、src/main/ipc.ts（落库 + 透传）、useApp.ts（`continueTask`）、ChatArea.tsx（`.stop-banner`）、i18n（`stop.*`）、global.css
+- **状态**：resolved
+
+### GAP-040 · 阶段进度只有「思考中」，无 `progress.phase.*` 阶段文案
+
+- **严重级**：P2（体验对齐）
+- **维度**：主进程 + 渲染层
+- **基线依据**：`original-baseline.md §5.3 §F` —— `progress.phase.*` 195 条：主状态（`preparing`=准备中 / `model_requesting`=等待模型响应 / `model_streaming`=生成回复中 / `model_done`=处理结果中 / `tool_executing`=调用工具中 / `waiting_for_permission`=等待授权 / `waiting_for_user`=等待回复 / `retrying`=重试中 / `compacting`=压缩上下文中）+ 每工具三态文案。
+- **现状**：GAP-025 已落「思考中」三点动画，但**只有一个静态文案**，与模型请求/生成阶段无关；`progress.phase.*` 的阶段性完全未对齐。
+- **期望**：`StreamChunk` 增 `phase` / `phaseTool`；主进程在 准备中 → 等待模型响应 → （首片）生成回复中 → 处理结果中 之间发阶段分片；渲染层按阶段渲染文案，工具类阶段追加工具名（`tool_executing · Read` 形态）。
+- **验证方法**：`grep -nE "phase:|phaseTool|ProgressPhase" src/main/llm.ts src/renderer/src/stores/useApp.ts src/renderer/src/components/ChatArea.tsx` 命中；运行时冒烟 0 控制台报错。
+- **修改文件**：src/shared/types.ts（`ProgressPhase` + `StreamChunk.phase/phaseTool`）、src/main/llm.ts（阶段分片发射）、useApp.ts（`phase`/`phaseTool` 状态）、ChatArea.tsx（`phaseLabel`）、App.tsx（透传）、i18n（`phase.*`）
+- **状态**：resolved
+
+---
+
+> 闭环状态（第七轮）：GAP-036 / 037 / 038 / 039 / 040 全部 **resolved 并复检通过**。
+>
+> - 逻辑冒烟 `smoke-r7-logic.mjs`：**17/17 通过**（停止原因映射 6、斜杠解析 6、错误分类回归 5）。
+> - DB 冒烟 `smoke-r7-db.mjs`：**13/13 通过**（旧库 ALTER 5、stop_reason 往返 5、设置默认值 3）。
+> - 运行时冒烟 `smoke-r7.cjs`：**0 控制台报错**；更多操作面板 7 项文案、斜杠面板 10 条指令、权限弹窗标题 + 三项能力 + 勾选放行、设置页新增「权限」「发送消息」字段全部断言通过。
+>
+> **第七轮 open 清零。** deferred 保持：GAP-007（IM 渠道 / 遥测 / 守护进程）、GAP-011（monaco 代码审阅器）。

@@ -21,6 +21,43 @@ export type ErrorKind =
   | 'server'
   | 'unknown'
 
+// 停止原因 —— 对齐原版 error.stopReason.*（模型正常结束但结果被截断/拒绝等）
+export type StopReason =
+  | 'authError'
+  | 'maxTokens'
+  | 'maxTurnRequests'
+  | 'modelService'
+  | 'network'
+  | 'refusal'
+  | 'generic'
+  | 'unknown'
+
+// 处理阶段 —— 对齐原版 progress.phase.*：主状态 + 工具级三态
+export type ProgressPhase =
+  | 'preparing'
+  | 'model_requesting'
+  | 'model_streaming'
+  | 'model_done'
+  | 'tool_executing'
+  | 'waiting_for_permission'
+  | 'waiting_for_user'
+  | 'retrying'
+  | 'compacting'
+
+// 权限等级 —— 对齐原版 input.wbAdd.permission.*
+export type PermissionLevel = 'default' | 'fullAccess'
+
+// 输入区「更多操作」分组 —— 对齐原版 input.wbAdd.* 七大分组
+export type WbAddGroup =
+  | 'files'
+  | 'references'
+  | 'experts'
+  | 'skills'
+  | 'connectors'
+  | 'plugins'
+  | 'mode'
+  | 'permission'
+
 export interface ChatMessage {
   id: string
   role: 'system' | 'user' | 'assistant'
@@ -34,6 +71,8 @@ export interface ChatMessage {
   errorKind?: ErrorKind
   // 面向用户的建议（如「请检查网络后重试」）
   errorHint?: string
+  // 正常结束但被截断/拒绝时的原因（对齐原版 error.stopReason.*）
+  stopReason?: StopReason
   // 用户消息携带的图片附件
   attachments?: Attachment[]
 }
@@ -67,6 +106,12 @@ export interface AppSettings {
   locale: 'zh-CN' | 'en'
   // 默认工作模式（会话内可临时覆盖）
   mode: WorkMode
+  // 权限等级（对齐原版 input.wbAdd.permission.*）：默认沙箱 / 完全访问
+  permission: PermissionLevel
+  // 允许完全访问前需勾选的安全确认（原版 confirm.checkbox 语义）
+  fullAccessAcknowledged: boolean
+  // 发送/换行快捷键可配置（对齐 chat.input.sendShortcutTooltip）
+  sendShortcut: 'Enter' | 'Mod+Enter'
 }
 
 export interface StreamRequest {
@@ -75,6 +120,10 @@ export interface StreamRequest {
   settings: AppSettings
   // 本次请求的工作模式（优先于 settings.mode）
   mode?: WorkMode
+  // 斜杠指令（对齐原版「/ 调用技能与指令」）：指令名 + 参数
+  slashCommand?: string
+  // 安全确认后的完全访问标记（供主进程记录/审计）
+  fullAccess?: boolean
   // 渲染层生成的客户端消息 id / 时间戳 —— 保证 DB 行与 UI 行一致，支撑消息级操作（删除/重新生成）
   userMessageId?: string
   userMessageCreatedAt?: number
@@ -84,12 +133,18 @@ export interface StreamRequest {
 
 // 流式增量：delta 为文本片段，done 为结束标记，error 为错误
 export interface StreamChunk {
-  type: 'delta' | 'done' | 'error'
+  type: 'delta' | 'done' | 'error' | 'phase'
   content?: string
   error?: string
   // 错误分类与建议（仅 error 分片携带）
   errorKind?: ErrorKind
   errorHint?: string
+  // 正常结束但被截断/拒绝（仅 done 分片携带，对齐 error.stopReason.*）
+  stopReason?: StopReason
+  // 处理阶段（仅 phase 分片携带，对齐 progress.phase.*）
+  phase?: ProgressPhase
+  // 阶段对应的工具名（用于渲染 progress.phase.*.{Tool} 文案）
+  phaseTool?: string
 }
 
 // IPC 通道常量（对齐 WorkBuddy 的 wb: 命名空间，参考本体 wb:conversation:* 风格）
