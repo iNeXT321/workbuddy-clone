@@ -142,7 +142,23 @@ export interface Conversation {
   messages: ChatMessage[]
   // 上下文档位（对齐 chat.sessionSeparator.*）
   separators?: SessionSeparator[]
+  // 任务状态角标（对齐 conversation.sectionFlag.*）
+  status?: ConversationStatus
+  // 任务来源端（对齐 conversation.origin.*）
+  origin?: ConversationOrigin
+  // 所属工作空间（对齐 conversation.section.workspaces / taskGroup）
+  workspace?: string | null
 }
+
+/**
+ * 任务状态 —— 对齐 `conversation.sectionFlag.tooltip.*` 的四个互斥状态：
+ * failed=有任务失败 / pending=有任务待确认 / unread=有任务未读 / working=有任务进行中。
+ * 值为 undefined 表示无角标（该分类下暂无状态任务）。
+ */
+export type ConversationStatus = 'failed' | 'pending' | 'unread' | 'working'
+
+/** 任务来源端 —— 对齐 `conversation.origin.*`：web / workbuddyApp / workbuddyMp */
+export type ConversationOrigin = 'web' | 'workbuddyApp' | 'workbuddyMp'
 
 export interface ModelInfo {
   id: string
@@ -320,6 +336,12 @@ export const IPC = {
   workspaceValidate: 'wb:workspace:validate',
   // 上下文档位（对齐 chat.sessionSeparator.*）
   newSession: 'wb:conversation:new-session',
+  // 任务状态角标 / 来源 / 工作空间归属（对齐 conversation.sectionFlag.* / origin.* / section.workspaces）
+  conversationStatus: 'wb:conversation:status',
+  conversationOrigin: 'wb:conversation:origin',
+  conversationWorkspace: 'wb:conversation:workspace',
+  // 运行中任务查询（对齐 conversation.windowTaskRunning.*：关窗前二次确认）
+  runningTasks: 'wb:conversation:running-tasks',
   // 内置终端
   termOpen: 'wb:terminal:open',
   termWrite: 'wb:terminal:write',

@@ -2,7 +2,13 @@ import { app, safeStorage } from 'electron'
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
 import { mkdirSync } from 'node:fs'
-import type { AppSettings, Conversation, ChatMessage, SessionSeparator } from '../shared/types'
+import type {
+  AppSettings,
+  Conversation,
+  ChatMessage,
+  SessionSeparator,
+  ConversationOrigin
+} from '../shared/types'
 
 /**
  * 本地存储层 —— 对齐 WorkBuddy 本体的 node:sqlite 用法：
@@ -11,7 +17,7 @@ import type { AppSettings, Conversation, ChatMessage, SessionSeparator } from '.
  * - safeStorage 加密 API key（本体的 credential-protection 同款思路）
  */
 
-class Store {
+export class Store {
   private db: DatabaseSync
   private settingsRow = 'settings'
 
@@ -35,7 +41,10 @@ class Store {
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         pinned INTEGER NOT NULL DEFAULT 0,
-        archived INTEGER NOT NULL DEFAULT 0
+        archived INTEGER NOT NULL DEFAULT 0,
+        status TEXT,
+        origin TEXT,
+        workspace TEXT
       );
       CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
@@ -90,6 +99,16 @@ class Store {
     }
     if (!convCols.some((c) => c.name === 'archived')) {
       this.db.exec('ALTER TABLE conversations ADD COLUMN archived INTEGER NOT NULL DEFAULT 0')
+    }
+    // 兼容旧库：conversations 表补 status / origin / workspace 列（对齐 sectionFlag / origin / 分组）
+    if (!convCols.some((c) => c.name === 'status')) {
+      this.db.exec('ALTER TABLE conversations ADD COLUMN status TEXT')
+    }
+    if (!convCols.some((c) => c.name === 'origin')) {
+      this.db.exec('ALTER TABLE conversations ADD COLUMN origin TEXT')
+    }
+    if (!convCols.some((c) => c.name === 'workspace')) {
+      this.db.exec('ALTER TABLE conversations ADD COLUMN workspace TEXT')
     }
   }
 
@@ -176,6 +195,9 @@ class Store {
       updated_at: number
       pinned: number
       archived: number
+      status: string | null
+      origin: string | null
+      workspace: string | null
     }>
     return rows.map((r) => ({
       id: r.id,
@@ -184,6 +206,9 @@ class Store {
       updatedAt: r.updated_at,
       pinned: !!r.pinned,
       archived: !!r.archived,
+      status: (r.status as Conversation['status']) ?? undefined,
+      origin: (r.origin as Conversation['origin']) ?? undefined,
+      workspace: r.workspace,
       messages: []
     }))
   }
@@ -212,19 +237,49 @@ class Store {
     return !!next
   }
 
-  createConversation(title: string): Conversation {
+  createConversation(title: string, origin?: ConversationOrigin): Conversation {
     const now = Date.now()
     const id = crypto.randomUUID()
+    // 本机创建的会话来源默认为 web 端（对齐 conversation.origin.web；移动端/小程序经渠道接入后回填）
+    const org: ConversationOrigin = origin ?? 'web'
     this.db
-      .prepare('INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)')
-      .run(id, title || '新对话', now, now)
-    return { id, title: title || '新对话', createdAt: now, updatedAt: now, pinned: false, archived: false, messages: [] }
+      .prepare('INSERT INTO conversations (id, title, created_at, updated_at, origin) VALUES (?, ?, ?, ?, ?)')
+      .run(id, title || '新对话', now, now, org)
+    return {
+      id,
+      title: title || '新对话',
+      createdAt: now,
+      updatedAt: now,
+      pinned: false,
+      archived: false,
+      origin: org,
+      workspace: null,
+      messages: []
+    }
   }
 
   // 会话数量（不含归档）—— 供会话上限提示使用（对齐 conversation.maxSessions.dialog.*）
   countConversations(): number {
     const row = this.db.prepare('SELECT COUNT(*) AS n FROM conversations WHERE archived = 0').get() as { n: number }
     return row.n
+  }
+
+  /**
+   * 更新任务状态角标（对齐 conversation.sectionFlag.*）。
+   * status 为空表示清除角标（「该分类下暂无状态任务」态）。
+   */
+  setConversationStatus(id: string, status: Conversation['status']): void {
+    this.db.prepare('UPDATE conversations SET status = ? WHERE id = ?').run(status ?? null, id)
+  }
+
+  /** 更新任务来源端（对齐 conversation.origin.*：web / workbuddyApp / workbuddyMp） */
+  setConversationOrigin(id: string, origin: Conversation['origin']): void {
+    this.db.prepare('UPDATE conversations SET origin = ? WHERE id = ?').run(origin ?? null, id)
+  }
+
+  /** 把任务移入工作空间（对齐 conversation.section.workspaces；null = 未归属） */
+  setConversationWorkspace(id: string, workspace: string | null): void {
+    this.db.prepare('UPDATE conversations SET workspace = ? WHERE id = ?').run(workspace, id)
   }
 
   // ---------- 上下文档位（对齐 chat.sessionSeparator.*） ----------
@@ -268,7 +323,17 @@ class Store {
 
   getConversation(id: string): Conversation | null {
     const row = this.db.prepare('SELECT * FROM conversations WHERE id = ?').get(id) as
-      | { id: string; title: string; created_at: number; updated_at: number; pinned: number; archived: number }
+      | {
+          id: string
+          title: string
+          created_at: number
+          updated_at: number
+          pinned: number
+          archived: number
+          status: string | null
+          origin: string | null
+          workspace: string | null
+        }
       | undefined
     if (!row) return null
     const msgs = this.db
@@ -291,6 +356,9 @@ class Store {
       updatedAt: row.updated_at,
       pinned: !!row.pinned,
       archived: !!row.archived,
+      status: (row.status as Conversation['status']) ?? undefined,
+      origin: (row.origin as Conversation['origin']) ?? undefined,
+      workspace: row.workspace,
       messages: msgs.map((m) => ({
         id: m.id,
         role: m.role as ChatMessage['role'],
@@ -372,6 +440,9 @@ class Store {
       updated_at: number
       pinned: number
       archived: number
+      status: string | null
+      origin: string | null
+      workspace: string | null
     }>
     return rows.map((r) => ({
       id: r.id,
@@ -380,6 +451,9 @@ class Store {
       updatedAt: r.updated_at,
       pinned: !!r.pinned,
       archived: !!r.archived,
+      status: (r.status as Conversation['status']) ?? undefined,
+      origin: (r.origin as Conversation['origin']) ?? undefined,
+      workspace: r.workspace,
       messages: []
     }))
   }

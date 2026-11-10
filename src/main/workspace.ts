@@ -19,13 +19,29 @@ export interface Workspace {
   createdAt: number
 }
 
-/** 工作空间名合法性：非空、无路径分隔符、无文件系统保留字符 */
+// Windows 设备保留名（跨平台安全集）：这些名字无法作为目录名创建
+const WIN_RESERVED = new Set([
+  'CON',
+  'PRN',
+  'AUX',
+  'NUL',
+  ...Array.from({ length: 9 }, (_, i) => `COM${i + 1}`),
+  ...Array.from({ length: 9 }, (_, i) => `LPT${i + 1}`)
+])
+
+/** 工作空间名合法性：非空、无路径分隔符、无文件系统保留字符、非设备保留名 */
 export function validateWorkspaceName(name: string): { ok: boolean; reason?: string } {
   const n = name.trim()
   if (!n) return { ok: false, reason: 'empty' }
   if (n === '.' || n === '..') return { ok: false, reason: 'reserved' }
   // 路径分隔符与常见非法字符（跨平台保守集）
   if (/[\\/:*?"<>|]/.test(n)) return { ok: false, reason: 'illegalChar' }
+  // 控制字符（不可见字符）
+  if (/[\u0000-\u001f]/.test(n)) return { ok: false, reason: 'illegalChar' }
+  // Windows 设备保留名（含带扩展名形式，如 CON.txt）
+  if (WIN_RESERVED.has(n.toUpperCase().split('.')[0])) return { ok: false, reason: 'reserved' }
+  // 结尾点号 / 空格在 Windows 上会被静默剥离，导致名实不符
+  if (/[. ]$/.test(n)) return { ok: false, reason: 'illegalChar' }
   if (n.length > 64) return { ok: false, reason: 'tooLong' }
   return { ok: true }
 }

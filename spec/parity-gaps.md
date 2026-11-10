@@ -748,3 +748,75 @@
 > - `npm run typecheck` 与 `npm run build` 均干净通过。
 >
 > **第九轮 open 清零。** deferred 累计：GAP-007（IM 渠道 / 遥测 / 守护进程）、GAP-011（monaco 代码审阅器）、GAP-049 代码库来源工作空间（Git 集成）。
+
+---
+
+## 第十轮监督（2026-11-11）：会话分组 / 状态角标 / 任务搜索 / 来源（GAP-053~057）
+
+本轮从 `conversation.*` 命名空间（314 条）继续深挖。第九轮打通了「消息流健壮性 + 任务归属」，但**会话的组织与可发现性**仍全为空白：`conversation.section.*`(13 条) 描述的**工作空间分组 + 状态筛选 + 折叠/展开**没有落点；`conversation.sectionFlag.*`(5 条) 的**四态角标**（失败/待确认/未读/进行中）无处呈现；`conversation.search.*`(7 条) 的**全局任务搜索覆盖层**缺失（只有侧栏输入框）；`conversation.origin.*`(3 条) 的**来源端标记**与 `conversation.windowTaskRunning.*`(4 条) 的**运行中关窗二次确认**均无实现。
+
+### GAP-053 · 会话状态角标（失败/待确认/未读/进行中）完全缺失
+
+- **严重级**：P1（可发现性 / 任务治理）
+- **维度**：DB + 主进程 + 渲染层
+- **基线依据**：`conversation.sectionFlag.tooltip.failed`=`有任务失败，点击打开`、`pending`=`有任务待确认，点击打开`、`unread`=`有任务未读，点击打开`、`working`=`有任务进行中，点击打开`（四条**互不重叠**的语义，证明是四个独立状态而非一个布尔）；`conversation.sectionFlag.empty`=`该分类下暂无状态任务`；`conversation.section.filter`=`筛选`、`noFilterResult`=`没有匹配的任务`。
+- **现状**：`Conversation` 无 `status` 字段，DB `conversations` 表无 `status` 列；侧栏无角标、无筛选、无空态文案。任务处于何种状态（跑着 / 待你确认 / 挂了）**在列表里完全不可见**，用户必须逐个点开才能发现。
+- **期望**：`ConversationStatus = 'failed' | 'pending' | 'unread' | 'working'` 落地；DB 加 `status` 列（含旧库 ALTER 补列）；`setConversationStatus` IPC + preload 桥；渲染层在**真实生命周期点**派生状态 —— `sendMessage`→`working`、收到 `approval`/`question` 分片→`pending`、回执（`approval-decision`/`question-answer`）→`working`、`done`→清除、`error`→`failed`；侧栏渲染角标 + 筛选下拉 + 空态。
+- **验证方法**：DB 冒烟 —— 三态往返 + 清除 + 旧库补列；运行时冒烟 —— 预置 `working`/`unread` 会话，断言角标 class、筛选 `working` 后仅剩 1 项、筛选 `failed` 显示「没有匹配的任务」；真实对话驱动验证 `working` 流转与结束清空。
+- **修改文件**：src/shared/types.ts、src/main/store.ts、src/main/ipc.ts、src/preload/index.ts、useApp.ts、Sidebar.tsx、i18n、global.css
+- **状态**：resolved
+
+### GAP-054 · 侧栏无工作空间分组，任务平铺无归属
+
+- **严重级**：P2（能力对齐 / 组织）
+- **维度**：DB + 主进程 + 渲染层
+- **基线依据**：`conversation.section.tasks`=`任务`、`workspaces`=`工作空间`、`taskGroup`=`任务`、`spaceGroup`=`空间`、`groups`=`空间`、`colleagueConversations`=`助理任务`；`collapseAll`=`折叠所有工作空间`、`expandAll`=`展开所有工作空间`、`addWorkspace`=`新建工作空间`。
+- **现状**：`Conversation` 无 `workspace` 字段（第九轮只做了「创建/选择工作空间目录」，未做「任务归属工作空间」）；侧栏会话**平铺**，无法按工作空间折叠成组，也无「折叠所有/展开所有」与「新建工作空间」入口。
+- **期望**：DB 加 `workspace` 列 + `setConversationWorkspace` IPC；侧栏按 `workspace` 分组（未归属归入「任务」组并置顶排序）；分组头含折叠箭头 + 名称 + 数量徽标；工具栏含「折叠所有 / 展开所有 / 新建工作空间」；空组显示 `sectionFlag.empty`。
+- **验证方法**：运行时冒烟 —— 预置 `ws-alpha`/`ws-beta` 两组，断言分组名与数量徽标渲染、按 `title` 点击「折叠所有」后列表项减少、「展开所有」后恢复；点击「新建工作空间」弹窗输入并真实落盘。
+- **修改文件**：src/shared/types.ts、src/main/store.ts、src/main/ipc.ts、src/preload/index.ts、useApp.ts、Sidebar.tsx、App.tsx、i18n、global.css
+- **状态**：resolved
+
+### GAP-055 · 缺失全局任务搜索覆盖层（⌘K）
+
+- **严重级**：P2（可发现性）
+- **维度**：渲染层
+- **基线依据**：`conversation.search.placeholder`=`搜索任务`、`recentTasks`=`最近任务`、`resultCount`=`搜索到 {count} 个任务`、`shortcut.navigate`=`上下切换`、`shortcut.open`=`打开`、`shortcut.close`=`关闭`；`settings.keyboardShortcuts.actions.openSearch`=`全局搜索`（独立于 `searchInConversation`=`对话内搜索`，证明是**两个不同入口**）。
+- **现状**：只有侧栏输入框（过滤列表），**没有**独立的搜索覆盖层；`⌘K` 被绑定为「聚焦侧栏输入框」，与原版「打开全局搜索」语义不符；无「最近任务」概念、无结果计数、无键盘导航提示。
+- **期望**：新增 `TaskSearchOverlay` 组件（无查询时展示最近 8 条任务；输入即时过滤标题；↑↓ 导航、Enter 打开、Esc 关闭；底部快捷键提示；结果项显示工作空间与来源）；`⌘K`/`Ctrl+K` 改为打开该覆盖层。
+- **验证方法**：运行时冒烟 —— 派发 `⌘K` 断言覆盖层出现、标题为「最近任务」、列出预置会话；输入「跑批」断言仅剩 1 项且计数为「搜索到 1 个任务」；`Esc` 关闭；重开后 `↓` 断言高亮移到第 2 项、`Enter` 选中并关闭。
+- **修改文件**：TaskSearchOverlay.tsx（新增）、App.tsx、i18n、global.css
+- **状态**：resolved
+
+### GAP-056 · 缺失来源端标记与「任务运行中」关窗二次确认
+
+- **严重级**：P2（能力对齐 / 数据安全）
+- **维度**：DB + 主进程 + 渲染层
+- **基线依据**：`conversation.origin.workbuddyMp`=`小程序`、`workbuddyApp`=`移动端`、`web`=`网页端`；`conversation.windowTaskRunning.title`=`任务运行中`、`message`=`关闭窗口后任务将继续在后台运行，可随时返回查看进度。请选择操作方式。`、`closeOnly`=`仅关闭窗口`、`cancelTask`=`中止任务并关闭`（**明确的两分支**，一为后台续跑、一为中止）。
+- **现状**：`Conversation` 无 `origin` 字段，任务来源不可知（侧栏/搜索项均无标记）；窗口 `close` **无任何拦截**，任务运行中直接关窗即静默中止且无提示 —— 与文案承诺的「继续在后台运行」直接冲突。
+- **期望**：DB 加 `origin` 列（默认 `web`）+ `setConversationOrigin` IPC；侧栏会话项与搜索结果显示来源徽标（`web` 不显示）；主进程 `win.on('close')` 拦截：若 `activeStreams` 非空则 `e.preventDefault()` 并弹原生二选一对话框，「仅关闭窗口」→ 后台续跑，「中止任务并关闭」→ abort 全部流后关闭；新增 `runningTasks` IPC 暴露运行中会话 id 列表。
+- **验证方法**：运行时冒烟 —— 预置 `workbuddyMp` 来源断言徽标 `title=小程序`（侧栏 + 覆盖层各一处）；`runningTasks()` 空闲返回空数组、真实对话结束后仍为空；DB 冒烟 —— `origin` 三值往返与默认值。
+- **修改文件**：src/shared/types.ts、src/main/store.ts、src/main/ipc.ts、src/main/index.ts、src/preload/index.ts、Sidebar.tsx、TaskSearchOverlay.tsx、i18n
+- **状态**：resolved
+
+### GAP-057 · 工作空间名未拦 Windows 设备保留名与结尾点号（本轮内部发现）
+
+- **严重级**：P3（健壮性 / 跨平台）
+- **维度**：主进程
+- **基线依据**：`taskStarter.createWorkspaceDesc`=`为工作空间命名，本地将自动创建同名文件夹，命名后不可随意更改` —— 「自动创建同名文件夹」隐含**名字必须真的能成为文件夹**。`CON`/`PRN`/`AUX`/`NUL`/`COM1-9`/`LPT1-9` 在 Windows 上是设备保留名，无法建目录；结尾点号/空格会被静默剥离，导致「名实不符」。
+- **现状**：`validateWorkspaceName` 只拦 `.`/`..`、路径分隔符与非法字符、超长，**未拦设备保留名、未拦控制字符、未拦结尾点号/空格**。由逻辑冒烟实测捕获（`validateWorkspaceName('CON').ok === true`）。
+- **期望**：补充保留名集合（含带扩展名形式如 `CON.txt`）、控制字符、结尾 `[. ]` 三类校验，均返回 `reserved` / `illegalChar`。
+- **验证方法**：逻辑冒烟 —— `CON` 被拒（修复前实测失败，修复后通过），另验证空名/斜杠/冒号/超长/中文名。
+- **修改文件**：src/main/workspace.ts
+- **状态**：resolved
+
+---
+
+> 闭环状态（第十轮）：GAP-053 / 054 / 055 / 056 / 057 全部 **resolved 并复检通过**。
+>
+> - 逻辑冒烟 `smoke-r10-logic.mjs`：**70/70 通过**（工作空间名校验 10、真实 mkdir 6、三态校验 3、列举 4、i18n 键与原文一致性 28、状态值域与 FLAG_ICON 10、主进程接线 7 等）。其中「保留名 CON 被拒」**修复前实测失败**，是 GAP-057 的直接证据。
+> - DB 冒烟 `smoke-r10-db.cjs`：**20/20 通过**（默认值 3、状态往返 3、来源往返 2、工作空间归属 2、list/search 带三字段 4、分组统计 1、旧库补列 3、旧数据可读可写 2）。
+> - 运行时冒烟 `smoke-r10.cjs`：**33/33 通过**，渲染层 **0 控制台报错**；真实 UI 路径下验证了状态角标渲染、按工作空间分组、筛选（`working` 命中 / `failed` 空态）、折叠展开、来源徽标、任务搜索覆盖层（⌘K / 最近任务 / 输入过滤 / ↓导航 / Enter 选中 / Esc 关闭）、新建工作空间**真实落盘**、`runningTasks` 空闲与结束态、真实对话全链路。
+> - `npm run typecheck` 与 `npm run build` 均干净通过。
+>
+> **第十轮 open 清零。** deferred 累计：GAP-007（IM 渠道 / 遥测 / 守护进程）、GAP-011（monaco 代码审阅器）、GAP-049 代码库来源工作空间（Git 集成）、`conversation.shareFile`（119 条，属协同域 collab）。

@@ -3,6 +3,8 @@ import type {
   AppSettings,
   Attachment,
   Conversation,
+  ConversationStatus,
+  ConversationOrigin,
   StreamChunk,
   ChatMessage,
   WorkMode,
@@ -67,6 +69,8 @@ interface AppState {
   selection: DocumentSelection | null
   // 本会话的上下文档位列表（对齐 chat.sessionSeparator.*）
   separators: SessionSeparator[]
+  // 会话创建中（对齐 conversation.creating.* / creatingTask）
+  creating: boolean
 
   init: () => Promise<void>
   selectConversation: (id: string) => Promise<void>
@@ -101,6 +105,12 @@ interface AppState {
   dismissSelection: () => void
   // 开启新的上下文档位（对齐 chat.sessionSeparator.*）
   startNewSession: () => Promise<void>
+  // 设置任务状态角标（对齐 conversation.sectionFlag.*）
+  setConversationStatus: (id: string, status: ConversationStatus | undefined) => Promise<void>
+  // 把任务移入 / 移出工作空间（对齐 conversation.section.workspaces）
+  setConversationWorkspace: (id: string, workspace: string | null) => Promise<void>
+  // 设置任务来源端（对齐 conversation.origin.*）
+  setConversationOrigin: (id: string, origin: ConversationOrigin | undefined) => Promise<void>
 }
 
 const wb = window.workbuddy
@@ -175,20 +185,25 @@ export const useAppStore = create<AppState>()((set, get) => {
     // 工具审批挂起（对齐 tool.approval.*）：等待用户点选，不结束流式
     if (chunk.type === 'approval' && chunk.approval) {
       set({ pendingApproval: chunk.approval, phase: 'waiting_for_permission', phaseTool: chunk.phaseTool ?? null })
+      // 状态角标转为「待确认」（对齐 conversation.sectionFlag.pending）
+      void get().setConversationStatus(conversationId, 'pending')
       return
     }
     // 向用户提问挂起（对齐 tool.askUserQuestion.*）
     if (chunk.type === 'question' && chunk.question) {
       set({ pendingQuestion: chunk.question, phase: 'waiting_for_user' })
+      void get().setConversationStatus(conversationId, 'pending')
       return
     }
-    // 用户回执：清空挂起态
+    // 用户回执：清空挂起态，回到「进行中」
     if (chunk.type === 'approval-decision') {
       set({ pendingApproval: null })
+      void get().setConversationStatus(conversationId, 'working')
       return
     }
     if (chunk.type === 'question-answer') {
       set({ pendingQuestion: null })
+      void get().setConversationStatus(conversationId, 'working')
       return
     }
     // 工具执行结果：累积到本轮工具卡片列表
@@ -200,6 +215,8 @@ export const useAppStore = create<AppState>()((set, get) => {
     set({ messages: next })
     if (chunk.type === 'done' || chunk.type === 'error') {
       set({ streaming: false, phase: null, phaseTool: null, pendingApproval: null, pendingQuestion: null })
+      // 状态角标：出错 → 「失败」；正常结束 → 清除（对齐 conversation.sectionFlag.*）
+      void get().setConversationStatus(conversationId, chunk.type === 'error' ? 'failed' : undefined)
       // 队列自动续发：当前回复结束后按序发出下一条（对齐原版「插入队列」）
       const q = get().queue
       if (q.length > 0) {
@@ -234,6 +251,7 @@ export const useAppStore = create<AppState>()((set, get) => {
     conversationLimit: { reached: false, max: 0, count: 0 },
     selection: null,
     separators: [],
+    creating: false,
 
     init: async () => {
       const s = await wb.getSettings()
@@ -268,22 +286,29 @@ export const useAppStore = create<AppState>()((set, get) => {
       const limit = await wb.conversationLimit()
       set({ conversationLimit: limit })
       if (limit.reached) {
-        toast.error(t('conversation.limit.title'))
+        // 对齐 conversation.maxSessions.dialog.*
+        toast.error(t('conversation.maxSessions.dialog.title'))
         return
       }
-      const conv = await wb.createConversation()
-      set((state) => ({
-        conversations: [conv, ...state.conversations],
-        currentId: conv.id,
-        messages: [],
-        streaming: false,
-        queue: [],
-        pendingApproval: null,
-        pendingQuestion: null,
-        toolResults: [],
-        selection: null,
-        separators: []
-      }))
+      // 进入创建中态（对齐 conversation.creatingTask / creating.title）
+      set({ creating: true })
+      try {
+        const conv = await wb.createConversation()
+        set((state) => ({
+          conversations: [conv, ...state.conversations],
+          currentId: conv.id,
+          messages: [],
+          streaming: false,
+          queue: [],
+          pendingApproval: null,
+          pendingQuestion: null,
+          toolResults: [],
+          selection: null,
+          separators: []
+        }))
+      } finally {
+        set({ creating: false })
+      }
     },
 
     // 清空当前会话上下文（保留会话本身），对齐原版 chat.clearSession
@@ -398,6 +423,8 @@ export const useAppStore = create<AppState>()((set, get) => {
         pendingQuestion: null,
         toolResults: []
       })
+      // 状态角标转「进行中」（对齐 conversation.sectionFlag.working）
+      void get().setConversationStatus(currentId, 'working')
 
       // 首次对话用首句更新标题（无文本时用附件名）
       const conv = conversations.find((c) => c.id === currentId)
@@ -605,6 +632,30 @@ export const useAppStore = create<AppState>()((set, get) => {
       } catch {
         toast.error(t('chat.cancelFailedRetry'))
       }
+    },
+
+    // 设置任务状态角标（对齐 conversation.sectionFlag.*）
+    setConversationStatus: async (id: string, status: ConversationStatus | undefined) => {
+      await wb.conversationStatus(id, status)
+      set((state) => ({
+        conversations: state.conversations.map((c) => (c.id === id ? { ...c, status } : c))
+      }))
+    },
+
+    // 把任务移入 / 移出工作空间（对齐 conversation.section.workspaces）
+    setConversationWorkspace: async (id: string, workspace: string | null) => {
+      await wb.conversationWorkspace(id, workspace)
+      set((state) => ({
+        conversations: state.conversations.map((c) => (c.id === id ? { ...c, workspace } : c))
+      }))
+    },
+
+    // 设置任务来源端（对齐 conversation.origin.*：web / workbuddyApp / workbuddyMp）
+    setConversationOrigin: async (id: string, origin: ConversationOrigin | undefined) => {
+      await wb.conversationOrigin(id, origin)
+      set((state) => ({
+        conversations: state.conversations.map((c) => (c.id === id ? { ...c, origin } : c))
+      }))
     }
   }
 })

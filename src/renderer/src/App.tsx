@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useApp } from './stores/useApp'
 import { useTranslation } from './i18n'
 import { toast } from './stores/useToast'
@@ -8,6 +8,7 @@ import Composer from './components/Composer'
 import SettingsPanel from './components/SettingsPanel'
 import TerminalPanel from './components/TerminalPanel'
 import PermissionDialog from './components/PermissionDialog'
+import TaskSearchOverlay from './components/TaskSearchOverlay'
 import Toaster from './components/Toaster'
 
 export default function App() {
@@ -20,9 +21,32 @@ export default function App() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null)
   // 对话内搜索由快捷键触发
   const [searchSignal, setSearchSignal] = useState(0)
+  // 任务搜索覆盖层（对齐 conversation.search.*）
+  const [showTaskSearch, setShowTaskSearch] = useState(false)
+  // 新建工作空间弹窗（对齐 conversation.section.addWorkspace）
+  const [showCreateWs, setShowCreateWs] = useState(false)
+  const [wsName, setWsName] = useState('')
+  const [wsError, setWsError] = useState('')
   // 切换文件确认弹窗（对齐 chat.docTabSwitch.dialog.*）
   const [pendingTab, setPendingTab] = useState<string | null>(null)
-  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // 新建工作空间：调主进程真实建目录，失败按 taskStarter.createWorkspace.toast.failed 提示
+  const createWorkspace = async () => {
+    const name = wsName.trim()
+    if (!name) {
+      setWsError(t('taskStarter.createWorkspacePlaceholder'))
+      return
+    }
+    const r = await window.workbuddy.workspaceCreate(name)
+    if (!r.ok) {
+      setWsError(t('taskStarter.createWorkspace.toast.failed'))
+      return
+    }
+    // 对齐 WorkspacePicker：创建成功即静默关闭（原版无成功 toast）
+    setShowCreateWs(false)
+    setWsName('')
+    setWsError('')
+  }
 
   // 应用启动时初始化（加载设置 + 会话列表 + 订阅流式事件）
   useEffect(() => {
@@ -51,6 +75,8 @@ export default function App() {
       const mod = e.metaKey || e.ctrlKey
       // Esc：停止生成 / 关闭浮层
       if (e.key === 'Escape') {
+        if (showTaskSearch) return setShowTaskSearch(false)
+        if (showCreateWs) return setShowCreateWs(false)
         if (showPermission) return setShowPermission(false)
         if (showSettings) return setShowSettings(false)
         if (app.streaming) void app.stopStreaming()
@@ -70,9 +96,9 @@ export default function App() {
           e.preventDefault()
           setShowSettings(true)
           break
-        case 'k': // 侧栏搜索聚焦
+        case 'k': // 全局任务搜索覆盖层（对齐 conversation.search.* / settings.keyboardShortcuts.actions.openSearch）
           e.preventDefault()
-          document.querySelector<HTMLInputElement>('.sidebar-search .search-input')?.focus()
+          setShowTaskSearch(true)
           break
         default:
           break
@@ -81,7 +107,7 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showSettings, app.streaming])
+  }, [showSettings, app.streaming, showTaskSearch, showCreateWs])
 
   return (
     <div className="app">
@@ -91,6 +117,7 @@ export default function App() {
         searchQuery={app.searchQuery}
         showArchived={app.showArchived}
         limitReached={app.conversationLimit.reached}
+        creating={app.creating}
         onSelect={requestSelect}
         onNew={app.newConversation}
         onDelete={app.removeConversation}
@@ -100,6 +127,8 @@ export default function App() {
         onTogglePin={app.togglePin}
         onToggleArchive={app.toggleArchive}
         onToggleShowArchived={() => app.setShowArchived(!app.showArchived)}
+        onOpenTaskSearch={() => setShowTaskSearch(true)}
+        onAddWorkspace={() => setShowCreateWs(true)}
       />
       <main className="main">
         <header className="topbar">
@@ -194,6 +223,44 @@ export default function App() {
                 {t('chat.cancel')}
               </button>
               <button className="btn" onClick={confirmTabSwitch}>
+                {t('common.confirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showTaskSearch && (
+        <TaskSearchOverlay
+          open={showTaskSearch}
+          conversations={app.conversations}
+          onClose={() => setShowTaskSearch(false)}
+          onSelect={requestSelect}
+        />
+      )}
+      {showCreateWs && (
+        <div className="modal-overlay" onClick={() => setShowCreateWs(false)}>
+          <div className="modal dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="dialog-title">{t('section.addWorkspace')}</div>
+            <div className="dialog-content">{t('taskStarter.createWorkspaceDesc')}</div>
+            <input
+              className="ws-create-input"
+              autoFocus
+              value={wsName}
+              placeholder={t('taskStarter.createWorkspacePlaceholder')}
+              onChange={(e) => {
+                setWsName(e.target.value)
+                setWsError('')
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void createWorkspace()
+              }}
+            />
+            {wsError && <div className="dialog-error">{wsError}</div>}
+            <div className="dialog-actions">
+              <button className="btn ghost" onClick={() => setShowCreateWs(false)}>
+                {t('chat.cancel')}
+              </button>
+              <button className="btn" onClick={() => void createWorkspace()}>
                 {t('common.confirm')}
               </button>
             </div>

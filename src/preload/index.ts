@@ -3,6 +3,8 @@ import { IPC } from '../shared/types'
 import type {
   AppSettings,
   Conversation,
+  ConversationStatus,
+  ConversationOrigin,
   StreamRequest,
   StreamChunk,
   ApprovalDecision,
@@ -61,6 +63,13 @@ export interface WorkbuddyBridge {
     meta: { model: string; mode: WorkMode; permission: PermissionLevel }
   ): Promise<{ id: string; createdAt: number; model: string; mode: string; permission: string }>
 
+  // 任务状态角标 / 来源 / 工作空间归属（对齐 conversation.sectionFlag.* / origin.* / section.workspaces）
+  conversationStatus(id: string, status: ConversationStatus | undefined): Promise<boolean>
+  conversationOrigin(id: string, origin: ConversationOrigin | undefined): Promise<boolean>
+  conversationWorkspace(id: string, workspace: string | null): Promise<boolean>
+  // 运行中任务查询（对齐 conversation.windowTaskRunning.*）
+  runningTasks(): Promise<string[]>
+
   // 内置终端
   termOpen(conversationId: string): Promise<{ ok: boolean; shell?: string }>
   termWrite(conversationId: string, data: string): Promise<{ ok: boolean }>
@@ -110,6 +119,11 @@ const bridge: WorkbuddyBridge = {
   workspaceCreate: (name) => ipcRenderer.invoke(IPC.workspaceCreate, name),
   workspaceValidate: (path) => ipcRenderer.invoke(IPC.workspaceValidate, path),
   newSession: (conversationId, meta) => ipcRenderer.invoke(IPC.newSession, conversationId, meta),
+
+  conversationStatus: (id, status) => ipcRenderer.invoke(IPC.conversationStatus, id, status),
+  conversationOrigin: (id, origin) => ipcRenderer.invoke(IPC.conversationOrigin, id, origin),
+  conversationWorkspace: (id, workspace) => ipcRenderer.invoke(IPC.conversationWorkspace, id, workspace),
+  runningTasks: () => ipcRenderer.invoke(IPC.runningTasks),
 
   termOpen: (conversationId) => ipcRenderer.invoke(IPC.termOpen, conversationId),
   termWrite: (conversationId, data) => ipcRenderer.invoke(IPC.termWrite, conversationId, data),

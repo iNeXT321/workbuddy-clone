@@ -11,7 +11,8 @@ import type {
   ApprovalRequest,
   UserQuestion,
   QuestionAnswer,
-  ToolCall
+  ToolCall,
+  Conversation
 } from '../shared/types'
 import { getStore } from './store'
 import { streamChat, classifyError } from './llm'
@@ -380,6 +381,25 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC.workspaceValidate, (_e, path: string) => workspaceExists(path))
+
+  // ---------- 任务状态角标 / 来源 / 工作空间归属 ----------
+  ipcMain.handle(IPC.conversationStatus, (_e, id: string, status: Conversation['status']) => {
+    getStore().setConversationStatus(id, status)
+    return true
+  })
+
+  ipcMain.handle(IPC.conversationOrigin, (_e, id: string, origin: Conversation['origin']) => {
+    getStore().setConversationOrigin(id, origin)
+    return true
+  })
+
+  ipcMain.handle(IPC.conversationWorkspace, (_e, id: string, workspace: string | null) => {
+    getStore().setConversationWorkspace(id, workspace)
+    return true
+  })
+
+  // 是否有任务正在运行（供渲染层窗口关闭前的二次确认，对齐 conversation.windowTaskRunning.*）
+  ipcMain.handle(IPC.runningTasks, () => [...activeStreams.keys()])
 
   // ---------- 上下文档位（对齐 chat.sessionSeparator.*） ----------
   ipcMain.handle(

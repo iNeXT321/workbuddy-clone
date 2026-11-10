@@ -269,6 +269,42 @@ MediaPreviewContext     Icons
 - **类型标签（事实）**：`typeLabel.skill`=Skill、`typeLabel.connector`=Connect、`typeLabel.mcp`=MCP、`typeLabel.subagent`=Agent、`typeLabel.mixed`=能力。
 - **其他（事实）**：`viewDetail`=查看详情、`collapseDetail`=收起详情、`manageLink`=管理页、`ariaLabel`=闲置技能、插件和 MCP 提示卡片、`closeAriaLabel`=关闭。
 
+### 5.6 第七次补证：会话组织 / 状态角标 / 任务搜索 / 来源（第十轮监督依据）
+
+证据来源：i18n 词典 `conversation.*` 命名空间（314 条，本轮聚焦其中的组织与可发现性子域）。
+
+**M. 侧栏分组与工具栏（事实）—— `conversation.section.*`（13 条）**
+
+- **分组名（事实）**：`tasks`=`任务`、`workspaces`=`工作空间`、`taskGroup`=`任务`、`spaceGroup`=`空间`、`groups`=`空间`、`colleagueConversations`=`助理任务` → 侧栏存在**按工作空间分组的列表**，且「未归属」另有独立分组（任务）。
+- **工具栏（事实）**：`collapseAll`=`折叠所有工作空间`、`expandAll`=`展开所有工作空间`、`addWorkspace`=`新建工作空间`、`addTask`=`新建任务`、`pinned`=`置顶`。
+- **筛选（事实）**：`filter`=`筛选`、`noFilterResult`=`没有匹配的任务` → 存在**按状态筛选**与筛选空态。
+
+**N. 四态状态角标（事实）—— `conversation.sectionFlag.*`（5 条）**
+
+- **四态（事实）**：`tooltip.failed`=`有任务失败，点击打开`、`tooltip.pending`=`有任务待确认，点击打开`、`tooltip.unread`=`有任务未读，点击打开`、`tooltip.working`=`有任务进行中，点击打开` —— 四条语义互不重叠，说明是**四个独立状态**而非单一布尔；「点击打开」说明角标是**可点击的快捷入口**。
+- **空态（事实）**：`sectionFlag.empty`=`该分类下暂无状态任务`。
+
+**O. 全局任务搜索（事实）—— `conversation.search.*`（7 条）**
+
+- **文案（事实）**：`placeholder`=`搜索任务`、`recentTasks`=`最近任务`、`resultCount`=`搜索到 {count} 个任务`、`shortcut.navigate`=`上下切换`、`shortcut.open`=`打开`、`shortcut.close`=`关闭`。
+- **与对话内搜索的区别（事实）**：`settings.keyboardShortcuts.actions.openSearch`=`全局搜索`，与 `searchInConversation`=`对话内搜索` 并列 → 是**两个独立入口**（前者为覆盖层，后者为消息内查找）。
+
+**P. 任务来源端（事实）—— `conversation.origin.*`（3 条）**
+
+- **三来源（事实）**：`web`=`网页端`、`workbuddyApp`=`移动端`、`workbuddyMp`=`小程序` → 会话可跨端产生，列表需标注来源。
+
+**Q. 运行中关窗确认（事实）—— `conversation.windowTaskRunning.*`（4 条）**
+
+- **二选一（事实）**：`title`=`任务运行中`、`message`=`关闭窗口后任务将继续在后台运行，可随时返回查看进度。请选择操作方式。`、`closeOnly`=`仅关闭窗口`、`cancelTask`=`中止任务并关闭` → 关窗前存在**强制二次确认**，且「仅关闭窗口」承诺**任务转为后台继续运行**（不是中止）。
+
+**R. 创建中态（事实）—— `conversation.creating*`（7 条）**
+
+- **文案（事实）**：`creatingTask`=`新建任务中`、`creating.title`=`正在准备执行`、`creating.description`=`Agent 正在接手并进入工作状态。`、`creating.dialog.title`=`提示`、`creating.dialog.content`=`正在创建会话，请稍后再试`、`creating.edit.button`=`编辑器`、`creating.edit.button.workspace`=`移动到工作区`。
+
+**S. 会话上限（事实）—— `conversation.maxSessions.dialog.*`（2 条）**
+
+- **文案（事实）**：`title`=`会话数量已达上限`、`content`=`您已达到最大会话数量限制，请先归档或删除一些会话后再创建新会话。`
+
 ## 6. 本基线文件的边界与限制
 
 - 本基线基于**静态产物清单 + 少量入口源码**，未完整反编译 300+ 模块。
@@ -291,9 +327,17 @@ MediaPreviewContext     Icons
 7. ✅ P1：语法高亮（shiki）—— 见 GAP-009 修正
 8. ✅ P2：图表渲染（mermaid）—— 见 GAP-010
 
+**近期推进**
+9. ✅ P1：三工作模式 / 对话内搜索 / 入队 / 阶段可视化 / 清空上下文（第三~四轮，GAP-022~026）
+10. ✅ P1：错误分类与停止原因（第六~七轮，GAP-031~039）
+11. ✅ P1：工具链路闭环（审批 / 提问 / 工具卡片）（第八轮，GAP-041~045）
+12. ✅ P1：消息流健壮性 + 工作空间 + 模型能力门控 + 上下文档位（第九轮，GAP-046~052）
+13. ✅ P1/P2：会话状态角标 + 工作空间分组 + 全局任务搜索 + 来源标记 + 运行中关窗确认（第十轮，GAP-053~057）
+
 **待决策（架构级长尾，需范围共识）**
-9. ⏳ P2：monaco 代码变更审阅器（diff/edit/apply）—— 原版 codeEditor chunk 的核心业务是「AI 代码改动审阅」，需在复刻引入 Artifact/代码编辑场景后才成立
-10. ⏳ P1：IM 渠道（飞书/钉钉/企微）
-11. ⏳ P2：遥测 / 自更新 / 守护进程
+14. ⏳ P2：monaco 代码变更审阅器（diff/edit/apply）—— 原版 codeEditor chunk 的核心业务是「AI 代码改动审阅」，需在复刻引入 Artifact/代码编辑场景后才成立
+15. ⏳ P1：IM 渠道（飞书/钉钉/企微）
+16. ⏳ P2：遥测 / 自更新 / 守护进程
+17. ⏳ P2：`conversation.shareFile.*`（119 条，属协同域 collab）与代码库来源工作空间（Git 集成）
 
 > 长尾项建议：先不追求 100% 一致，而是按「核心链路 → 能力外延」逐层推进。每轮由监督角色产出新 GAP，开发角色修复后复检，直至本阶段范围内 0 open。

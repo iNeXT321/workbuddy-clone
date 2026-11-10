@@ -237,8 +237,8 @@ const zhCN: Dict = {
   'common.initializing': '正在初始化...',
   'common.confirm': '确认',
   // 会话上限（对齐 conversation.maxSessions.dialog.*）
-  'conversation.limit.title': '会话数量已达上限',
-  'conversation.limit.content': '您已达到最大会话数量限制，请先归档或删除一些会话后再创建新会话。',
+  'conversation.maxSessions.dialog.title': '会话数量已达上限',
+  'conversation.maxSessions.dialog.content': '您已达到最大会话数量限制，请先归档或删除一些会话后再创建新会话。',
   'conversation.empty.title': '暂无任务',
   'conversation.empty.description': '点击上方按钮开始新任务',
   'conversation.cwdNotExist': '该对话的工作目录可能已被重命名或删除',
@@ -326,7 +326,53 @@ const zhCN: Dict = {
   'taskStarter.workspacePathHint.settingsLink': '「系统设置」',
   'taskStarter.workspacePathHint.suffix': '设置默认工作空间存储路径',
   'taskStarter.selectDirectory': '选择目录',
-  'taskStarter.noData': '暂无数据'
+  'taskStarter.noData': '暂无数据',
+  // ---------- 第十轮：会话分组 / 状态角标 / 任务搜索 / 来源 ----------
+  // 侧栏分组（对齐 conversation.section.*）
+  'section.workspaces': '工作空间',
+  'section.tasks': '任务',
+  'section.pinned': '置顶',
+  'section.colleagueConversations': '助理任务',
+  'section.groups': '空间',
+  'section.spaceGroup': '空间',
+  'section.taskGroup': '任务',
+  'section.addTask': '新建任务',
+  'section.addWorkspace': '新建工作空间',
+  'section.collapseAll': '折叠所有工作空间',
+  'section.expandAll': '展开所有工作空间',
+  'section.filter': '筛选',
+  'section.noFilterResult': '没有匹配的任务',
+  // 状态角标（对齐 conversation.sectionFlag.*）
+  'sectionFlag.empty': '该分类下暂无状态任务',
+  'sectionFlag.tooltip.failed': '有任务失败，点击打开',
+  'sectionFlag.tooltip.pending': '有任务待确认，点击打开',
+  'sectionFlag.tooltip.unread': '有任务未读，点击打开',
+  'sectionFlag.tooltip.working': '有任务进行中，点击打开',
+  // 任务搜索（对齐 conversation.search.*）
+  'taskSearch.title': '搜索',
+  'taskSearch.placeholder': '搜索任务',
+  'taskSearch.recentTasks': '最近任务',
+  'taskSearch.resultCount': '搜索到 {count} 个任务',
+  'taskSearch.shortcut.open': '打开',
+  'taskSearch.shortcut.navigate': '上下切换',
+  'taskSearch.shortcut.close': '关闭',
+  // 任务来源（对齐 conversation.origin.*）
+  'origin.web': '网页端',
+  'origin.workbuddyApp': '移动端',
+  'origin.workbuddyMp': '小程序',
+  // 创建中态（对齐 conversation.creating.* / conversation.creatingTask）
+  'conversation.creatingTask': '新建任务中',
+  'conversation.creating.title': '正在准备执行',
+  'conversation.creating.description': 'Agent 正在接手并进入工作状态。',
+  'conversation.creating.dialog.title': '提示',
+  'conversation.creating.dialog.content': '正在创建会话，请稍后再试',
+  'conversation.creating.edit.button': '编辑器',
+  'conversation.creating.edit.button.workspace': '移动到工作区',
+  // 运行中关窗确认（对齐 conversation.windowTaskRunning.*）
+  'conversation.windowTaskRunning.title': '任务运行中',
+  'conversation.windowTaskRunning.message': '关闭窗口后任务将继续在后台运行，可随时返回查看进度。请选择操作方式。',
+  'conversation.windowTaskRunning.cancelTask': '中止任务并关闭',
+  'conversation.windowTaskRunning.closeOnly': '仅关闭窗口'
 }
 
 const en: Dict = {
@@ -551,8 +597,8 @@ const en: Dict = {
   'common.initializing': 'Initializing...',
   'common.confirm': 'Confirm',
   // Conversation limit (aligned with conversation.maxSessions.dialog.*)
-  'conversation.limit.title': 'Conversation limit reached',
-  'conversation.limit.content': 'You have reached the maximum number of conversations. Archive or delete some before creating a new one.',
+  'conversation.maxSessions.dialog.title': 'Conversation limit reached',
+  'conversation.maxSessions.dialog.content': 'You have reached the maximum number of conversations. Archive or delete some before creating a new one.',
   'conversation.empty.title': 'No tasks yet',
   'conversation.empty.description': 'Click the button above to start a new task',
   'conversation.cwdNotExist': "This conversation's working directory may have been renamed or deleted",
@@ -635,7 +681,48 @@ const en: Dict = {
   'taskStarter.workspacePathHint.settingsLink': 'System Settings',
   'taskStarter.workspacePathHint.suffix': 'to set the default workspace storage path',
   'taskStarter.selectDirectory': 'Select directory',
-  'taskStarter.noData': 'No data'
+  'taskStarter.noData': 'No data',
+  // ---------- Round 10: conversation grouping / status / task search / origin ----------
+  'section.workspaces': 'Workspaces',
+  'section.tasks': 'Tasks',
+  'section.pinned': 'Pinned',
+  'section.colleagueConversations': 'Assistant tasks',
+  'section.groups': 'Spaces',
+  'section.spaceGroup': 'Spaces',
+  'section.taskGroup': 'Tasks',
+  'section.addTask': 'New task',
+  'section.addWorkspace': 'New workspace',
+  'section.collapseAll': 'Collapse all workspaces',
+  'section.expandAll': 'Expand all workspaces',
+  'section.filter': 'Filter',
+  'section.noFilterResult': 'No matching tasks',
+  'sectionFlag.empty': 'No tasks with this status in this group',
+  'sectionFlag.tooltip.failed': 'A task failed, click to open',
+  'sectionFlag.tooltip.pending': 'A task needs confirmation, click to open',
+  'sectionFlag.tooltip.unread': 'A task is unread, click to open',
+  'sectionFlag.tooltip.working': 'A task is running, click to open',
+  'taskSearch.title': 'Search',
+  'taskSearch.placeholder': 'Search tasks',
+  'taskSearch.recentTasks': 'Recent tasks',
+  'taskSearch.resultCount': '{count} tasks found',
+  'taskSearch.shortcut.open': 'Open',
+  'taskSearch.shortcut.navigate': 'Navigate',
+  'taskSearch.shortcut.close': 'Close',
+  'origin.web': 'Web',
+  'origin.workbuddyApp': 'Mobile',
+  'origin.workbuddyMp': 'Mini program',
+  'conversation.creatingTask': 'Creating task',
+  'conversation.creating.title': 'Preparing to run',
+  'conversation.creating.description': 'The agent is taking over and getting to work.',
+  'conversation.creating.dialog.title': 'Notice',
+  'conversation.creating.dialog.content': 'Creating the conversation, please try again later',
+  'conversation.creating.edit.button': 'Editor',
+  'conversation.creating.edit.button.workspace': 'Move to workspace',
+  'conversation.windowTaskRunning.title': 'Task running',
+  'conversation.windowTaskRunning.message':
+    'After closing the window the task will keep running in the background; you can return to check progress at any time. Please choose.',
+  'conversation.windowTaskRunning.cancelTask': 'Abort task and close',
+  'conversation.windowTaskRunning.closeOnly': 'Close window only'
 }
 
 // 语言包总表（原版同款：按 locale 拆分的扁平字典）

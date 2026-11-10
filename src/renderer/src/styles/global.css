@@ -2181,3 +2181,265 @@ body {
   gap: 8px;
   margin-top: 16px;
 }
+
+/* ==================== 第十轮：会话分组 / 状态角标 / 任务搜索 / 来源 ==================== */
+
+/* 状态角标（对齐 conversation.sectionFlag.*） */
+.status-flag {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 700;
+  margin-right: 6px;
+}
+.status-flag.flag-working {
+  color: #2f80ed;
+  background: rgba(47, 128, 237, 0.14);
+}
+.status-flag.flag-pending {
+  color: #d68910;
+  background: rgba(214, 137, 16, 0.16);
+}
+.status-flag.flag-failed {
+  color: var(--danger);
+  background: rgba(229, 72, 77, 0.16);
+}
+.status-flag.flag-unread {
+  color: var(--accent);
+  background: rgba(79, 140, 255, 0.16);
+}
+
+/* 来源标记（对齐 conversation.origin.*） */
+.origin-badge {
+  margin-left: 6px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  opacity: 0.85;
+}
+
+/* 创建中横幅（对齐 conversation.creatingTask） */
+.creating-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.creating-spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 分组工具栏（对齐 conversation.section.filter / collapseAll / expandAll / addWorkspace） */
+.section-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 8px;
+}
+.filter-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--bg-tertiary);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  outline: none;
+}
+.filter-select:focus {
+  border-color: var(--accent);
+}
+
+/* 工作空间分组（对齐 conversation.section.workspaces / taskGroup） */
+.ws-group {
+  margin-bottom: 4px;
+}
+.ws-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+.ws-group-header:hover {
+  color: var(--text);
+}
+.ws-group-caret {
+  flex: 0 0 auto;
+  width: 12px;
+  font-size: 10px;
+}
+.ws-group-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-group-count {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-radius: 9px;
+  padding: 0 6px;
+}
+.ws-group-empty {
+  padding: 4px 10px 8px 28px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  opacity: 0.8;
+}
+
+/* 新建工作空间输入 */
+.ws-create-input {
+  width: 100%;
+  margin-top: 12px;
+  background: var(--bg-tertiary);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  outline: none;
+}
+.ws-create-input:focus {
+  border-color: var(--accent);
+}
+.dialog-error {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+/* 任务搜索覆盖层（对齐 conversation.search.*） */
+.overlay-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.42);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  z-index: 200;
+}
+.task-search {
+  width: 520px;
+  max-width: calc(100vw - 32px);
+  background: var(--bg-elevated, var(--bg));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+.task-search-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.task-search-icon {
+  color: var(--text-secondary);
+}
+.task-search-input {
+  flex: 1 1 auto;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+}
+.task-search-count {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.task-search-list {
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 6px;
+}
+.task-search-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+.task-search-item.active {
+  background: var(--bg-tertiary);
+}
+.task-search-title {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.task-search-ws,
+.task-search-origin {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+.task-search-empty {
+  padding: 18px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.task-search-foot {
+  display: flex;
+  gap: 14px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.shortcut-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.shortcut-hint kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+}

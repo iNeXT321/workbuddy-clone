@@ -1,6 +1,6 @@
-import { app, BrowserWindow, Menu, shell, nativeTheme } from 'electron'
+import { app, BrowserWindow, Menu, shell, nativeTheme, dialog } from 'electron'
 import { join } from 'node:path'
-import { registerIpcHandlers } from './ipc'
+import { registerIpcHandlers, activeStreams } from './ipc'
 import { registerTerminalHandlers } from './terminal'
 import { getStore } from './store'
 
@@ -34,6 +34,35 @@ function createWindow(): void {
   })
 
   win.once('ready-to-show', () => win.show())
+
+  // 关窗前拦截：若仍有任务运行，弹出「任务运行中」二选一（对齐 conversation.windowTaskRunning.*）
+  let forceClose = false
+  win.on('close', (e) => {
+    if (forceClose) return
+    if (activeStreams.size === 0) return
+    e.preventDefault()
+    const choice = dialog.showMessageBoxSync(win, {
+      type: 'question',
+      title: '任务运行中',
+      message: '关闭窗口后任务将继续在后台运行，可随时返回查看进度。请选择操作方式。',
+      buttons: ['仅关闭窗口', '中止任务并关闭'],
+      defaultId: 0,
+      cancelId: 0
+    })
+    // 0 = 仅关闭窗口（任务继续在后台）；1 = 中止任务并关闭
+    if (choice === 1) {
+      for (const ctrl of activeStreams.values()) {
+        try {
+          ctrl.abort()
+        } catch {
+          /* ignore */
+        }
+      }
+      activeStreams.clear()
+    }
+    forceClose = true
+    win.close()
+  })
 
   // 外链用系统浏览器打开（对齐本体的 shell 外链策略）
   win.webContents.setWindowOpenHandler(({ url }) => {
