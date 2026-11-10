@@ -26,12 +26,16 @@ export default function App() {
         conversations={app.conversations}
         currentId={app.currentId}
         searchQuery={app.searchQuery}
+        showArchived={app.showArchived}
         onSelect={app.selectConversation}
         onNew={app.newConversation}
         onDelete={app.removeConversation}
         onRename={app.renameConversation}
         onSearch={app.search}
         onExport={app.exportConversation}
+        onTogglePin={app.togglePin}
+        onToggleArchive={app.toggleArchive}
+        onToggleShowArchived={() => app.setShowArchived(!app.showArchived)}
       />
       <main className="main">
         <header className="topbar">

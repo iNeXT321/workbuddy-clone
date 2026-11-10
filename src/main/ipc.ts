@@ -22,7 +22,9 @@ export function registerIpcHandlers(): void {
   })
 
   // ---------- 会话 ----------
-  ipcMain.handle(IPC.listConversations, () => getStore().listConversations())
+  ipcMain.handle(IPC.listConversations, (_e, includeArchived?: boolean) =>
+    getStore().listConversations(!!includeArchived)
+  )
 
   ipcMain.handle(IPC.createConversation, (_e, title?: string) => {
     return getStore().createConversation(title ?? '')
@@ -44,6 +46,11 @@ export function registerIpcHandlers(): void {
     if (!query || !query.trim()) return getStore().listConversations()
     return getStore().searchConversations(query.trim())
   })
+
+  // 置顶 / 归档（对齐原版会话组织能力）
+  ipcMain.handle(IPC.pinConversation, (_e, id: string) => getStore().togglePin(id))
+
+  ipcMain.handle(IPC.archiveConversation, (_e, id: string) => getStore().toggleArchive(id))
 
   // ---------- 消息级操作 ----------
   ipcMain.handle(IPC.deleteMessage, (_e, conversationId: string, messageId: string) => {

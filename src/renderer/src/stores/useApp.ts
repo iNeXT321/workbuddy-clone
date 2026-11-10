@@ -26,12 +26,17 @@ interface AppState {
   mode: WorkMode
   // 流式中的待发送队列
   queue: QueuedInput[]
+  // 侧边栏是否显示归档会话
+  showArchived: boolean
 
   init: () => Promise<void>
   selectConversation: (id: string) => Promise<void>
   newConversation: () => Promise<void>
   removeConversation: (id: string) => Promise<void>
   renameConversation: (id: string, title: string) => Promise<void>
+  togglePin: (id: string) => Promise<void>
+  toggleArchive: (id: string) => Promise<void>
+  setShowArchived: (v: boolean) => Promise<void>
   clearContext: () => Promise<void>
   search: (query: string) => Promise<void>
   exportConversation: (id: string) => Promise<void>
@@ -132,6 +137,7 @@ export const useAppStore = create<AppState>()((set, get) => {
     searchQuery: '',
     mode: 'default',
     queue: [],
+    showArchived: false,
 
     init: async () => {
       const s = await wb.getSettings()
@@ -198,6 +204,32 @@ export const useAppStore = create<AppState>()((set, get) => {
       set((state) => ({
         conversations: state.conversations.map((c) => (c.id === id ? { ...c, title } : c))
       }))
+    },
+
+    // 置顶 / 取消置顶（对齐原版 conversation.section.pinned）
+    togglePin: async (id: string) => {
+      const pinned = await wb.pinConversation(id)
+      set((state) => {
+        const next = state.conversations.map((c) => (c.id === id ? { ...c, pinned } : c))
+        // 置顶优先排序
+        next.sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned) || b.updatedAt - a.updatedAt)
+        return { conversations: next }
+      })
+      toast.success(pinned ? t('sidebar.pinned') : t('sidebar.unpinned'))
+    },
+
+    // 归档 / 取消归档（对齐原版「归档或删除」）
+    toggleArchive: async (id: string) => {
+      const archived = await wb.archiveConversation(id)
+      const list = await wb.listConversations(get().showArchived)
+      set({ conversations: list })
+      toast.success(archived ? t('sidebar.archived') : t('sidebar.unarchived'))
+    },
+
+    // 切换是否显示归档会话
+    setShowArchived: async (v: boolean) => {
+      const list = await wb.listConversations(v)
+      set({ showArchived: v, conversations: list })
     },
 
     search: async (query: string) => {

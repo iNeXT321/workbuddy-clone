@@ -370,3 +370,35 @@
 > 闭环状态（第三轮）：GAP-022 / 023 / 024 / 025 / 026 均 **resolved 并复检通过**。前轮 deferred GAP-007（IM/遥测/守护进程）、GAP-011（monaco 审阅器）维持 deferred（架构/场景级长尾）。**本轮 open 清零。**
 >
 > 下一轮监督方向：会话置顶/分组、A2A 审批流与权限弹窗落地、`progress.phase.*` 全量阶段对齐、@ 上下文引用与 / 技能指令（`input.wbAdd.*` 大命名空间）。
+
+---
+
+## 第四轮监督（会话组织能力 · i18n 词典驱动）
+
+> 依据：§5.2 词典命名空间 `conversation.*`（314 条）。筛出会话**组织**能力：`conversation.section.pinned`=`置顶`、`conversation.section.groups`=`空间`、`conversation.maxSessions.dialog.content`=「您已达到最大会话数量限制，请先归档或删除一些会话后再创建新会话。」（事实：原版**有归档概念**）。
+
+### GAP-027 · 缺失会话置顶
+
+- **严重级**：P1（会话管理核心）
+- **维度**：数据层 / 渲染层
+- **基线依据**：original-baseline.md §5.2 —— `conversation.section.pinned`=`置顶`
+- **现状**：侧边栏按 `updatedAt` 单序列排列，无置顶概念；常用会话会被新会话冲走。
+- **期望**：会话可置顶/取消置顶；置顶会话固定在最上方并归入「置顶」分组（分组标题对齐基线文案）。
+- **验证方法**：`grep -nE "pinned" src/main/store.ts src/renderer/src/stores/useApp.ts src/renderer/src/components/Sidebar.tsx` 命中三处。
+- **修改文件**：src/shared/types.ts（`Conversation.pinned`）、src/main/store.ts（`pinned` 列 + 旧库 ALTER + 排序 pinned DESC）、src/main/ipc.ts（`wb:conversation:pin`）、src/preload/index.ts、src/renderer/src/stores/useApp.ts（`togglePin`）、Sidebar.tsx（分组 + 置顶按钮）、i18n、global.css
+- **状态**：resolved
+
+### GAP-028 · 缺失会话归档
+
+- **严重级**：P2（会话管理）
+- **维度**：数据层 / 渲染层
+- **基线依据**：original-baseline.md §5.2 —— `conversation.maxSessions.dialog.content` 提及「归档或删除」（事实：原版有归档）
+- **现状**：只有删除（不可逆），无归档（可逆的收纳）。
+- **期望**：会话可归档/取消归档；归档会话从主列表隐藏，可切换查看。
+- **验证方法**：`grep -nE "archived" src/main/store.ts src/renderer/src/stores/useApp.ts` 命中。
+- **修改文件**：src/shared/types.ts（`Conversation.archived`）、src/main/store.ts（`archived` 列 + 过滤）、src/main/ipc.ts、preload、store（`toggleArchive`）、Sidebar.tsx、i18n
+- **状态**：resolved
+
+---
+
+> 闭环状态（第四轮）：GAP-027 / 028 **resolved 并复检通过**。**open 清零。**

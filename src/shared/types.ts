@@ -29,6 +29,10 @@ export interface Conversation {
   title: string
   createdAt: number
   updatedAt: number
+  // 置顶（对齐原版 conversation.section.pinned）
+  pinned?: boolean
+  // 归档（对齐原版「归档或删除」语义）
+  archived?: boolean
   messages: ChatMessage[]
 }
 
@@ -84,6 +88,8 @@ export const IPC = {
   renameConversation: 'wb:conversation:rename',
   searchConversations: 'wb:conversation:search',
   exportConversation: 'wb:conversation:export',
+  pinConversation: 'wb:conversation:pin',
+  archiveConversation: 'wb:conversation:archive',
   // 消息级操作：按消息 id 截断（删除该消息及其后续），比按时间戳更可靠
   deleteMessage: 'wb:message:delete',
   truncateFrom: 'wb:message:truncate-from',

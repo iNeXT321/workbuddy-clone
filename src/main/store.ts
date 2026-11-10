@@ -33,7 +33,9 @@ class Store {
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
+        updated_at INTEGER NOT NULL,
+        pinned INTEGER NOT NULL DEFAULT 0,
+        archived INTEGER NOT NULL DEFAULT 0
       );
       CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
@@ -50,6 +52,15 @@ class Store {
     const cols = this.db.prepare('PRAGMA table_info(messages)').all() as Array<{ name: string }>
     if (!cols.some((c) => c.name === 'attachments')) {
       this.db.exec('ALTER TABLE messages ADD COLUMN attachments TEXT')
+    }
+
+    // 兼容旧库：conversations 表补 pinned / archived 列（对齐原版置顶 / 归档）
+    const convCols = this.db.prepare('PRAGMA table_info(conversations)').all() as Array<{ name: string }>
+    if (!convCols.some((c) => c.name === 'pinned')) {
+      this.db.exec('ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0')
+    }
+    if (!convCols.some((c) => c.name === 'archived')) {
+      this.db.exec('ALTER TABLE conversations ADD COLUMN archived INTEGER NOT NULL DEFAULT 0')
     }
   }
 
@@ -115,17 +126,52 @@ class Store {
   }
 
   // ---------- 会话 ----------
-  listConversations(): Conversation[] {
-    const rows = this.db
-      .prepare('SELECT * FROM conversations ORDER BY updated_at DESC')
-      .all() as Array<{ id: string; title: string; created_at: number; updated_at: number }>
+  // includeArchived=false 时过滤归档会话；排序：置顶优先，再按更新时间倒序
+  listConversations(includeArchived = false): Conversation[] {
+    const sql = includeArchived
+      ? 'SELECT * FROM conversations ORDER BY pinned DESC, updated_at DESC'
+      : 'SELECT * FROM conversations WHERE archived = 0 ORDER BY pinned DESC, updated_at DESC'
+    const rows = this.db.prepare(sql).all() as Array<{
+      id: string
+      title: string
+      created_at: number
+      updated_at: number
+      pinned: number
+      archived: number
+    }>
     return rows.map((r) => ({
       id: r.id,
       title: r.title,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
+      pinned: !!r.pinned,
+      archived: !!r.archived,
       messages: []
     }))
+  }
+
+  // 切换置顶（对齐原版 conversation.section.pinned）
+  togglePin(id: string): boolean {
+    const row = this.db.prepare('SELECT pinned FROM conversations WHERE id = ?').get(id) as
+      | { pinned: number }
+      | undefined
+    if (!row) return false
+    const next = row.pinned ? 0 : 1
+    this.db.prepare('UPDATE conversations SET pinned = ? WHERE id = ?').run(next, id)
+    return !!next
+  }
+
+  // 切换归档（对齐原版「归档或删除」语义）；归档时自动取消置顶
+  toggleArchive(id: string): boolean {
+    const row = this.db.prepare('SELECT archived FROM conversations WHERE id = ?').get(id) as
+      | { archived: number }
+      | undefined
+    if (!row) return false
+    const next = row.archived ? 0 : 1
+    this.db
+      .prepare('UPDATE conversations SET archived = ?, pinned = CASE WHEN ? = 1 THEN 0 ELSE pinned END WHERE id = ?')
+      .run(next, next, id)
+    return !!next
   }
 
   createConversation(title: string): Conversation {
@@ -134,12 +180,12 @@ class Store {
     this.db
       .prepare('INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)')
       .run(id, title || '新对话', now, now)
-    return { id, title: title || '新对话', createdAt: now, updatedAt: now, messages: [] }
+    return { id, title: title || '新对话', createdAt: now, updatedAt: now, pinned: false, archived: false, messages: [] }
   }
 
   getConversation(id: string): Conversation | null {
     const row = this.db.prepare('SELECT * FROM conversations WHERE id = ?').get(id) as
-      | { id: string; title: string; created_at: number; updated_at: number }
+      | { id: string; title: string; created_at: number; updated_at: number; pinned: number; archived: number }
       | undefined
     if (!row) return null
     const msgs = this.db
@@ -150,6 +196,8 @@ class Store {
       title: row.title,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      pinned: !!row.pinned,
+      archived: !!row.archived,
       messages: msgs.map((m) => ({
         id: m.id,
         role: m.role as ChatMessage['role'],
@@ -194,22 +242,31 @@ class Store {
       .run(conversationId, target.rowid)
   }
 
-  // 会话搜索：按标题或消息内容检索（对齐原版 search 能力）
+  // 会话搜索：按标题或消息内容检索（对齐原版 search 能力）；归档会话不参与
   searchConversations(query: string): Conversation[] {
     const q = `%${query}%`
     const rows = this.db
       .prepare(
         `SELECT DISTINCT c.* FROM conversations c
          LEFT JOIN messages m ON m.conversation_id = c.id
-         WHERE c.title LIKE ? OR m.content LIKE ?
-         ORDER BY c.updated_at DESC`
+         WHERE c.archived = 0 AND (c.title LIKE ? OR m.content LIKE ?)
+         ORDER BY c.pinned DESC, c.updated_at DESC`
       )
-      .all(q, q) as Array<{ id: string; title: string; created_at: number; updated_at: number }>
+      .all(q, q) as Array<{
+      id: string
+      title: string
+      created_at: number
+      updated_at: number
+      pinned: number
+      archived: number
+    }>
     return rows.map((r) => ({
       id: r.id,
       title: r.title,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
+      pinned: !!r.pinned,
+      archived: !!r.archived,
       messages: []
     }))
   }

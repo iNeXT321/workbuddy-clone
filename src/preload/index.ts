@@ -12,13 +12,15 @@ export interface WorkbuddyBridge {
   getSettings(): Promise<AppSettings>
   saveSettings(settings: AppSettings): Promise<AppSettings>
 
-  listConversations(): Promise<Conversation[]>
+  listConversations(includeArchived?: boolean): Promise<Conversation[]>
   createConversation(title?: string): Promise<Conversation>
   getConversation(id: string): Promise<Conversation | null>
   deleteConversation(id: string): Promise<boolean>
   renameConversation(id: string, title: string): Promise<boolean>
   searchConversations(query: string): Promise<Conversation[]>
   exportConversation(id: string): Promise<{ ok: boolean; filePath?: string }>
+  pinConversation(id: string): Promise<boolean>
+  archiveConversation(id: string): Promise<boolean>
 
   // 消息级操作
   deleteMessage(conversationId: string, messageId: string): Promise<boolean>
@@ -50,13 +52,15 @@ const bridge: WorkbuddyBridge = {
   getSettings: () => ipcRenderer.invoke(IPC.getSettings),
   saveSettings: (settings) => ipcRenderer.invoke(IPC.saveSettings, settings),
 
-  listConversations: () => ipcRenderer.invoke(IPC.listConversations),
+  listConversations: (includeArchived) => ipcRenderer.invoke(IPC.listConversations, includeArchived),
   createConversation: (title) => ipcRenderer.invoke(IPC.createConversation, title),
   getConversation: (id) => ipcRenderer.invoke(IPC.getConversation, id),
   deleteConversation: (id) => ipcRenderer.invoke(IPC.deleteConversation, id),
   renameConversation: (id, title) => ipcRenderer.invoke(IPC.renameConversation, id, title),
   searchConversations: (query) => ipcRenderer.invoke(IPC.searchConversations, query),
   exportConversation: (id) => ipcRenderer.invoke(IPC.exportConversation, id),
+  pinConversation: (id) => ipcRenderer.invoke(IPC.pinConversation, id),
+  archiveConversation: (id) => ipcRenderer.invoke(IPC.archiveConversation, id),
 
   deleteMessage: (conversationId, messageId) => ipcRenderer.invoke(IPC.deleteMessage, conversationId, messageId),
   truncateFrom: (conversationId, fromMessageId) => ipcRenderer.invoke(IPC.truncateFrom, conversationId, fromMessageId),

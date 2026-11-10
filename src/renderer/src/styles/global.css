@@ -1075,3 +1075,40 @@ body {
     transform: translateY(-2px);
   }
 }
+
+/* ---------- 会话置顶 / 归档 / 分组（GAP-027, GAP-028） ---------- */
+.conversation-section {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 10px 12px 4px;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  user-select: none;
+}
+
+.conversation-item .pin-mark {
+  margin-right: 4px;
+  font-size: 11px;
+}
+
+.icon-btn.small.on {
+  opacity: 1;
+}
+
+.sidebar-footer {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.link-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+.link-btn:hover {
+  color: var(--accent);
+}
