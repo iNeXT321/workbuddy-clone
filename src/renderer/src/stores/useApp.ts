@@ -6,8 +6,12 @@ import type {
   StreamChunk,
   ChatMessage,
   WorkMode,
-  ProgressPhase
+  ProgressPhase,
+  ApprovalDecision,
+  ApprovalRequest,
+  UserQuestion
 } from '../../../shared/types'
+import { lookupErrorCode } from '../../../shared/errorCodes'
 import { toast } from './useToast'
 import { useI18nStore, t } from '../i18n'
 
@@ -21,6 +25,14 @@ interface QueuedInput {
   id: string
   text: string
   attachments?: Attachment[]
+}
+
+// 工具结果卡片（对齐原版工具执行结果展示）
+export interface ToolResultItem {
+  id: string
+  name: string
+  ok: boolean
+  output: string
 }
 
 interface AppState {
@@ -40,6 +52,14 @@ interface AppState {
   phase: ProgressPhase | null
   // 阶段对应的工具名（用于渲染 progress.phase.*.{Tool} 文案）
   phaseTool: string | null
+  // 挂起的工具审批请求（对齐 tool.approval.*），同一时刻至多一个
+  pendingApproval: ApprovalRequest | null
+  // 挂起的「向用户提问」（对齐 tool.askUserQuestion.*）
+  pendingQuestion: (UserQuestion & { id: string }) | null
+  // 本轮已完成的工具结果（用于在对话流中展示工具卡片）
+  toolResults: ToolResultItem[]
+  // 会话数量上限状态（对齐 conversation.maxSessions.*）
+  conversationLimit: { reached: boolean; max: number; count: number }
 
   init: () => Promise<void>
   selectConversation: (id: string) => Promise<void>
@@ -63,6 +83,11 @@ interface AppState {
   removeMessage: (messageId: string) => Promise<void>
   editMessage: (messageId: string, newText: string) => Promise<void>
   stopStreaming: () => Promise<void>
+  // 审批决定回执（允许 / 始终允许 / 拒绝，对齐 tool.approval.*）
+  decideApproval: (decision: ApprovalDecision) => Promise<void>
+  // 回答向用户提问（对齐 tool.askUserQuestion.*）
+  answerQuestion: (answers: string[]) => Promise<void>
+  skipQuestion: () => Promise<void>
   saveSettings: (s: AppSettings) => Promise<void>
 }
 
@@ -132,10 +157,34 @@ export const useAppStore = create<AppState>()((set, get) => {
       set({ phase: chunk.phase ?? null, phaseTool: chunk.phaseTool ?? null })
       return
     }
+    // 工具审批挂起（对齐 tool.approval.*）：等待用户点选，不结束流式
+    if (chunk.type === 'approval' && chunk.approval) {
+      set({ pendingApproval: chunk.approval, phase: 'waiting_for_permission', phaseTool: chunk.phaseTool ?? null })
+      return
+    }
+    // 向用户提问挂起（对齐 tool.askUserQuestion.*）
+    if (chunk.type === 'question' && chunk.question) {
+      set({ pendingQuestion: chunk.question, phase: 'waiting_for_user' })
+      return
+    }
+    // 用户回执：清空挂起态
+    if (chunk.type === 'approval-decision') {
+      set({ pendingApproval: null })
+      return
+    }
+    if (chunk.type === 'question-answer') {
+      set({ pendingQuestion: null })
+      return
+    }
+    // 工具执行结果：累积到本轮工具卡片列表
+    if (chunk.type === 'tool-result' && chunk.toolResult) {
+      set({ toolResults: [...get().toolResults, chunk.toolResult] })
+      return
+    }
     const next = applyChunkToMessages(messages, chunk)
     set({ messages: next })
     if (chunk.type === 'done' || chunk.type === 'error') {
-      set({ streaming: false, phase: null, phaseTool: null })
+      set({ streaming: false, phase: null, phaseTool: null, pendingApproval: null, pendingQuestion: null })
       // 队列自动续发：当前回复结束后按序发出下一条（对齐原版「插入队列」）
       const q = get().queue
       if (q.length > 0) {
@@ -164,13 +213,18 @@ export const useAppStore = create<AppState>()((set, get) => {
     showArchived: false,
     phase: null,
     phaseTool: null,
+    pendingApproval: null,
+    pendingQuestion: null,
+    toolResults: [],
+    conversationLimit: { reached: false, max: 0, count: 0 },
 
     init: async () => {
       const s = await wb.getSettings()
       applyTheme(s.theme)
       useI18nStore.getState().setLocale(s.locale)
       const list = await wb.listConversations()
-      set({ settings: s, conversations: list, mode: s.mode ?? 'default' })
+      const limit = await wb.conversationLimit()
+      set({ settings: s, conversations: list, mode: s.mode ?? 'default', conversationLimit: limit })
       if (list.length > 0) {
         await get().selectConversation(list[0].id)
       } else {
@@ -180,17 +234,34 @@ export const useAppStore = create<AppState>()((set, get) => {
 
     selectConversation: async (id: string) => {
       const conv = await wb.getConversation(id)
-      set({ currentId: id, messages: conv ? conv.messages : [], queue: [] })
+      set({
+        currentId: id,
+        messages: conv ? conv.messages : [],
+        queue: [],
+        pendingApproval: null,
+        pendingQuestion: null,
+        toolResults: []
+      })
     },
 
     newConversation: async () => {
+      // 会话数量上限（对齐原版 conversation.maxSessions.dialog.*）
+      const limit = await wb.conversationLimit()
+      set({ conversationLimit: limit })
+      if (limit.reached) {
+        toast.error(t('conversation.limit.title'))
+        return
+      }
       const conv = await wb.createConversation()
       set((state) => ({
         conversations: [conv, ...state.conversations],
         currentId: conv.id,
         messages: [],
         streaming: false,
-        queue: []
+        queue: [],
+        pendingApproval: null,
+        pendingQuestion: null,
+        toolResults: []
       }))
     },
 
@@ -288,7 +359,15 @@ export const useAppStore = create<AppState>()((set, get) => {
         attachments: attachments && attachments.length ? attachments : undefined
       }
       const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '', createdAt: Date.now(), streaming: true }
-      set({ messages: [...messages, userMsg, assistantMsg], streaming: true, phase: 'preparing', phaseTool: null })
+      set({
+        messages: [...messages, userMsg, assistantMsg],
+        streaming: true,
+        phase: 'preparing',
+        phaseTool: null,
+        pendingApproval: null,
+        pendingQuestion: null,
+        toolResults: []
+      })
 
       // 首次对话用首句更新标题（无文本时用附件名）
       const conv = conversations.find((c) => c.id === currentId)
@@ -409,7 +488,40 @@ export const useAppStore = create<AppState>()((set, get) => {
       const { currentId } = get()
       if (currentId) await wb.chatAbort(currentId)
       // 主动停止视为放弃后续队列
-      set({ streaming: false, queue: [], phase: null, phaseTool: null })
+      set({
+        streaming: false,
+        queue: [],
+        phase: null,
+        phaseTool: null,
+        pendingApproval: null,
+        pendingQuestion: null
+      })
+    },
+
+    // 审批决定回执（对齐 tool.approval.*）：写回主进程，挂起的工具链路继续执行
+    decideApproval: async (decision: ApprovalDecision) => {
+      const { currentId, pendingApproval } = get()
+      if (!currentId || !pendingApproval) return
+      await wb.approvalDecide(currentId, decision, pendingApproval.id)
+      set({ pendingApproval: null })
+      if (decision === 'reject') toast.info(t('approval.decisionRejected'))
+    },
+
+    // 回答向用户提问（对齐 tool.askUserQuestion.*）
+    answerQuestion: async (answers: string[]) => {
+      const { currentId, pendingQuestion } = get()
+      if (!currentId || !pendingQuestion) return
+      await wb.answerQuestion(currentId, pendingQuestion.id, answers, false)
+      set({ pendingQuestion: null })
+    },
+
+    // 跳过提问：主进程按「基于合理假设继续」处理
+    skipQuestion: async () => {
+      const { currentId, pendingQuestion } = get()
+      if (!currentId || !pendingQuestion) return
+      await wb.answerQuestion(currentId, pendingQuestion.id, [], true)
+      set({ pendingQuestion: null })
+      toast.info(t('question.skipped'))
     },
 
     saveSettings: async (s: AppSettings) => {

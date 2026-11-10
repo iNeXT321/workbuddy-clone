@@ -204,7 +204,53 @@ const zhCN: Dict = {
   'slash.hint': '输入 / 调用技能与指令',
   'slash.clear': '清空',
   // 外部模型安全提示（对齐原版 input.externalModelWarning）
-  'composer.externalModelWarning': '使用外部模型，注意数据安全'
+  'composer.externalModelWarning': '使用外部模型，注意数据安全',
+  // 工具审批（对齐原版 tool.approval.*）
+  'approval.allow': '允许',
+  'approval.alwaysAllowSession': '本次会话始终允许',
+  'approval.alwaysAllowLaunch': '本次启动内始终允许',
+  'approval.reject': '拒绝',
+  'approval.decisionApproved': '已确认',
+  'approval.decisionRejected': '已拒绝',
+  'approval.title.imageGen': '确认开始生成图片？',
+  'approval.title.videoGen': '确认开始生成视频？',
+  'approval.title.computerUse': '确认开始使用电脑操控能力？',
+  'approval.title.audioTranscribe': '确认开始音频文件转文字？',
+  'approval.title.imageProcessing': '确认开始处理图片？',
+  'approval.title.generic': '确认执行该操作？',
+  'approval.risk.imageGen': '产生积分消耗',
+  'approval.risk.videoGen': '积分消耗较高',
+  'approval.risk.computerUse': '产生积分消耗',
+  'approval.risk.audioTranscribe': '产生积分消耗',
+  'approval.risk.imageProcessing': '预计产生积分消耗',
+  'approval.risk.generic': '需要授权',
+  // 向用户提问（对齐原版 tool.askUserQuestion.*）
+  'question.title': '向用户提问',
+  'question.waiting': '等待您的回答...',
+  'question.skipped': '您跳过了此问题',
+  'question.submit': '提交回答',
+  'question.skip': '跳过',
+  'question.answered': '已回答',
+  // 免责声明（对齐原版 common.aiDisclaimer）
+  'common.aiDisclaimer': '内容由 AI 生成，请核实重要信息',
+  'common.loading': '加载中...',
+  'common.initializing': '正在初始化...',
+  // 会话上限（对齐 conversation.maxSessions.dialog.*）
+  'conversation.limit.title': '会话数量已达上限',
+  'conversation.limit.content': '您已达到最大会话数量限制，请先归档或删除一些会话后再创建新会话。',
+  'conversation.empty.title': '暂无任务',
+  'conversation.empty.description': '点击上方按钮开始新任务',
+  'conversation.cwdNotExist': '该对话的工作目录可能已被重命名或删除',
+  'conversation.jumpNotFound': '对话记录未找到',
+  // 相对时间（对齐 conversation.time.*）
+  'time.justNow': '刚刚',
+  'time.minutesAgo': '{count}分钟前',
+  'time.hoursAgo': '{count}小时前',
+  'time.yesterday': '昨天',
+  'time.daysAgo': '{count}天前',
+  'time.yearsAgo': '{count}年前',
+  // 错误码（对齐 errorCode.*）
+  'error.code': '错误码：'
 }
 
 const en: Dict = {
@@ -396,7 +442,53 @@ const en: Dict = {
   'slash.hint': 'Type / to call skills and commands',
   'slash.clear': 'Clear',
   // External model warning (aligned with input.externalModelWarning)
-  'composer.externalModelWarning': 'Using an external model — mind your data security'
+  'composer.externalModelWarning': 'Using an external model — mind your data security',
+  // Tool approval (aligned with tool.approval.*)
+  'approval.allow': 'Allow',
+  'approval.alwaysAllowSession': 'Always allow this session',
+  'approval.alwaysAllowLaunch': 'Always allow this launch',
+  'approval.reject': 'Reject',
+  'approval.decisionApproved': 'Approved',
+  'approval.decisionRejected': 'Rejected',
+  'approval.title.imageGen': 'Start generating images?',
+  'approval.title.videoGen': 'Start generating video?',
+  'approval.title.computerUse': 'Start using computer control?',
+  'approval.title.audioTranscribe': 'Start audio transcription?',
+  'approval.title.imageProcessing': 'Start processing images?',
+  'approval.title.generic': 'Proceed with this action?',
+  'approval.risk.imageGen': 'Consumes credits',
+  'approval.risk.videoGen': 'High credit usage',
+  'approval.risk.computerUse': 'Consumes credits',
+  'approval.risk.audioTranscribe': 'Consumes credits',
+  'approval.risk.imageProcessing': 'Likely consumes credits',
+  'approval.risk.generic': 'Requires authorization',
+  // Ask user question (aligned with tool.askUserQuestion.*)
+  'question.title': 'Question for you',
+  'question.waiting': 'Waiting for your answer...',
+  'question.skipped': 'You skipped this question',
+  'question.submit': 'Submit answer',
+  'question.skip': 'Skip',
+  'question.answered': 'Answered',
+  // Disclaimer (aligned with common.aiDisclaimer)
+  'common.aiDisclaimer': 'AI-generated content. Verify important information.',
+  'common.loading': 'Loading...',
+  'common.initializing': 'Initializing...',
+  // Conversation limit (aligned with conversation.maxSessions.dialog.*)
+  'conversation.limit.title': 'Conversation limit reached',
+  'conversation.limit.content': 'You have reached the maximum number of conversations. Archive or delete some before creating a new one.',
+  'conversation.empty.title': 'No tasks yet',
+  'conversation.empty.description': 'Click the button above to start a new task',
+  'conversation.cwdNotExist': "This conversation's working directory may have been renamed or deleted",
+  'conversation.jumpNotFound': 'Conversation record not found',
+  // Relative time (aligned with conversation.time.*)
+  'time.justNow': 'just now',
+  'time.minutesAgo': '{count}m ago',
+  'time.hoursAgo': '{count}h ago',
+  'time.yesterday': 'yesterday',
+  'time.daysAgo': '{count}d ago',
+  'time.yearsAgo': '{count}y ago',
+  // Error code (aligned with errorCode.*)
+  'error.code': 'Error code: '
 }
 
 const DICTS: Record<Locale, Dict> = { 'zh-CN': zhCN, en }

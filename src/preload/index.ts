@@ -1,6 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/types'
-import type { AppSettings, Conversation, StreamRequest, StreamChunk } from '../shared/types'
+import type {
+  AppSettings,
+  Conversation,
+  StreamRequest,
+  StreamChunk,
+  ApprovalDecision,
+  ConversationLimit
+} from '../shared/types'
 
 /**
  * preload 桥接层 —— 对齐 WorkBuddy 的 contextBridge 模式：
@@ -28,6 +35,18 @@ export interface WorkbuddyBridge {
 
   chatStream(req: StreamRequest): Promise<boolean>
   chatAbort(conversationId: string): Promise<boolean>
+
+  // 工具审批（对齐 tool.approval.*）与向用户提问（对齐 tool.askUserQuestion.*）
+  approvalDecide(conversationId: string, decision: ApprovalDecision, approvalId?: string): Promise<boolean>
+  answerQuestion(
+    conversationId: string,
+    questionId: string,
+    answers: string[],
+    skipped?: boolean
+  ): Promise<boolean>
+
+  // 会话数量上限（对齐 conversation.maxSessions.*）
+  conversationLimit(): Promise<ConversationLimit & { count: number }>
 
   // 内置终端
   termOpen(conversationId: string): Promise<{ ok: boolean; shell?: string }>
@@ -67,6 +86,12 @@ const bridge: WorkbuddyBridge = {
 
   chatStream: (req) => ipcRenderer.invoke(IPC.chatStream, req),
   chatAbort: (conversationId) => ipcRenderer.invoke(IPC.chatAbort, conversationId),
+
+  approvalDecide: (conversationId, decision, approvalId) =>
+    ipcRenderer.invoke(IPC.approvalDecide, conversationId, decision, approvalId),
+  answerQuestion: (conversationId, questionId, answers, skipped) =>
+    ipcRenderer.invoke(IPC.answerQuestion, conversationId, questionId, answers, skipped),
+  conversationLimit: () => ipcRenderer.invoke(IPC.conversationLimit),
 
   termOpen: (conversationId) => ipcRenderer.invoke(IPC.termOpen, conversationId),
   termWrite: (conversationId, data) => ipcRenderer.invoke(IPC.termWrite, conversationId, data),

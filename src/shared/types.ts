@@ -47,6 +47,51 @@ export type ProgressPhase =
 // 权限等级 —— 对齐原版 input.wbAdd.permission.*
 export type PermissionLevel = 'default' | 'fullAccess'
 
+// 需要审批的工具（高消耗/高风险能力）—— 对齐原版 tool.approval.confirmTitle.* / riskTag.*
+export type ApprovalTool =
+  | 'imageGen'
+  | 'videoGen'
+  | 'computerUse'
+  | 'audioTranscribe'
+  | 'imageProcessing'
+  | 'generic'
+
+// 审批决定 —— 对齐原版 tool.approval.allow / alwaysAllow / alwaysAllowThisLaunch / reject
+export type ApprovalDecision = 'allow' | 'alwaysAllowSession' | 'alwaysAllowLaunch' | 'reject'
+
+export interface ApprovalRequest {
+  id: string
+  tool: ApprovalTool
+  // 原始工具名（如 ImageGen）
+  toolName: string
+  // 确认标题（对齐 tool.approval.confirmTitle.{tool}）
+  title: string
+  // 风险标签（对齐 tool.approval.riskTag.{tool}）
+  riskTag?: string
+  // 积分消耗提示（对齐 tool.approval.creditHint.{tool}）
+  creditHint?: string
+}
+
+// 向用户提问 —— 对齐原版 tool.askUserQuestion.*
+export interface UserQuestionOption {
+  label: string
+  description?: string
+}
+
+export interface UserQuestion {
+  id: string
+  question: string
+  header?: string
+  options?: UserQuestionOption[]
+  multiSelect?: boolean
+}
+
+export interface QuestionAnswer {
+  id: string
+  answers: string[]
+  skipped?: boolean
+}
+
 // 输入区「更多操作」分组 —— 对齐原版 input.wbAdd.* 七大分组
 export type WbAddGroup =
   | 'files'
@@ -73,6 +118,12 @@ export interface ChatMessage {
   errorHint?: string
   // 正常结束但被截断/拒绝时的原因（对齐原版 error.stopReason.*）
   stopReason?: StopReason
+  // 结构化错误码（对齐原版 errorCode.*，254 条错误码体系）
+  errorCode?: string
+  // 工具审批请求（对齐原版 tool.approval.*）：待用户授权
+  pendingApproval?: ApprovalRequest
+  // 向用户提问（对齐原版 tool.askUserQuestion.*）
+  pendingQuestion?: UserQuestion
   // 用户消息携带的图片附件
   attachments?: Attachment[]
 }
@@ -131,20 +182,56 @@ export interface StreamRequest {
   assistantMessageCreatedAt?: number
 }
 
+// 模型发起的一次工具调用（对齐原版 model→tool call→审批→执行 链路）
+export interface ToolCall {
+  id: string
+  name: string
+  // JSON 字符串形式的参数
+  args: string
+}
+
 // 流式增量：delta 为文本片段，done 为结束标记，error 为错误
+// approval / question 为交互挂起分片（对齐工具审批与向用户提问），
+// approval-decision / question-answer 为用户回执分片，tool-call 为模型请求调用工具
 export interface StreamChunk {
-  type: 'delta' | 'done' | 'error' | 'phase'
+  type:
+    | 'delta'
+    | 'done'
+    | 'error'
+    | 'phase'
+    | 'approval'
+    | 'question'
+    | 'approval-decision'
+    | 'question-answer'
+    | 'tool-call'
+    | 'tool-result'
   content?: string
   error?: string
   // 错误分类与建议（仅 error 分片携带）
   errorKind?: ErrorKind
   errorHint?: string
+  // 结构化错误码（对齐原版 errorCode.*）
+  errorCode?: string
   // 正常结束但被截断/拒绝（仅 done 分片携带，对齐 error.stopReason.*）
   stopReason?: StopReason
   // 处理阶段（仅 phase 分片携带，对齐 progress.phase.*）
   phase?: ProgressPhase
   // 阶段对应的工具名（用于渲染 progress.phase.*.{Tool} 文案）
   phaseTool?: string
+  // 审批请求（仅 approval 分片携带，对齐 tool.approval.*）
+  approval?: ApprovalRequest
+  // 向用户提问（仅 question 分片携带，对齐 tool.askUserQuestion.*）
+  question?: UserQuestion
+  // 模型请求的工具调用（仅 tool-call 分片携带）
+  toolCall?: ToolCall
+  // 工具执行结果（仅 tool-result 分片携带，用于渲染工具结果卡片）
+  toolResult?: { id: string; name: string; ok: boolean; output: string }
+}
+
+// 会话上限提示（对齐原版 conversation.maxSessions.dialog.*）
+export interface ConversationLimit {
+  reached: boolean
+  max: number
 }
 
 // IPC 通道常量（对齐 WorkBuddy 的 wb: 命名空间，参考本体 wb:conversation:* 风格）
@@ -168,6 +255,11 @@ export const IPC = {
   // 对话流
   chatStream: 'wb:chat:stream',
   chatAbort: 'wb:chat:abort',
+  // 工具审批（对齐 tool.approval.*）与向用户提问（对齐 tool.askUserQuestion.*）
+  approvalDecide: 'wb:approval:decide',
+  answerQuestion: 'wb:question:answer',
+  // 会话数量上限查询（对齐 conversation.maxSessions.*）
+  conversationLimit: 'wb:conversation:limit',
   // 内置终端
   termOpen: 'wb:terminal:open',
   termWrite: 'wb:terminal:write',

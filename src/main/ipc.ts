@@ -2,12 +2,114 @@ import { ipcMain, BrowserWindow, dialog, app } from 'electron'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { IPC } from '../shared/types'
-import type { StreamRequest, ChatMessage, ErrorKind, StopReason, ProgressPhase } from '../shared/types'
+import type {
+  StreamRequest,
+  ErrorKind,
+  StopReason,
+  ProgressPhase,
+  ApprovalDecision,
+  ApprovalRequest,
+  UserQuestion,
+  QuestionAnswer,
+  ToolCall
+} from '../shared/types'
 import { getStore } from './store'
 import { streamChat, classifyError } from './llm'
+import { MAX_SESSIONS, approvalToolFor, APPROVAL_RULES } from '../shared/errorCodes'
 
 // 活跃的流式请求，按会话取消
 const activeStreams = new Map<string, AbortController>()
+
+/**
+ * 挂起的交互等待器 —— 对齐原版工具审批 / 向用户提问的「主进程挂起、渲染层回执」模型：
+ * 主进程 emit 一个 approval/question 分片后在此 await 一个 Promise；
+ * 渲染层用户点选后经 ipcMain.handle 回填 resolve，主进程继续执行。
+ * key = `${conversationId}`，同一会话同一时刻只允许一个挂起交互。
+ */
+interface PendingInteractive<T> {
+  id: string
+  resolve: (v: T) => void
+}
+const pendingApprovals = new Map<string, PendingInteractive<ApprovalDecision>>()
+const pendingQuestions = new Map<string, PendingInteractive<QuestionAnswer>>()
+
+// 本次会话 / 本次启动内「始终允许」的记忆集合（对齐 tool.approval.alwaysAllowSession / alwaysAllowLaunch）
+const sessionDecisions = new Map<string, Set<string>>()
+const launchDecisions = new Set<string>()
+
+/** 查询某个工具在给定会话下是否已被「始终允许」*/
+export function preApproved(conversationId: string, toolName: string): boolean {
+  if (launchDecisions.has(toolName)) return true
+  return sessionDecisions.get(conversationId)?.has(toolName) ?? false
+}
+
+function rememberDecision(conversationId: string, toolName: string, decision: ApprovalDecision): void {
+  if (decision === 'alwaysAllowSession') {
+    const s = sessionDecisions.get(conversationId) ?? new Set<string>()
+    s.add(toolName)
+    sessionDecisions.set(conversationId, s)
+  } else if (decision === 'alwaysAllowLaunch') {
+    launchDecisions.add(toolName)
+  }
+}
+
+/** 会话清理：删除会话时同步清理其会话级记忆 */
+export function clearSessionDecisions(conversationId: string): void {
+  sessionDecisions.delete(conversationId)
+  pendingApprovals.delete(conversationId)
+  pendingQuestions.delete(conversationId)
+}
+
+/**
+ * 请求一次工具审批 —— 由流式链路在「默认权限」下遇到需审批工具时调用。
+ * 返回用户决定；完全访问（fullAccess）下调用方不会走到这里。
+ */
+export function requestApproval(
+  win: BrowserWindow | null,
+  conversationId: string,
+  toolName: string,
+  id: string
+): Promise<ApprovalDecision> {
+  if (preApproved(conversationId, toolName)) return Promise.resolve('allow')
+  const tool = approvalToolFor(toolName)
+  const rule = APPROVAL_RULES[tool]
+  const req: ApprovalRequest = {
+    id,
+    tool,
+    toolName,
+    title: rule.title,
+    riskTag: rule.riskTag,
+    creditHint: rule.creditHint
+  }
+  return new Promise<ApprovalDecision>((resolve) => {
+    pendingApprovals.set(conversationId, { id, resolve })
+    if (win && !win.isDestroyed()) {
+      win.webContents.send(IPC.chatStreamEvent, {
+        conversationId,
+        chunk: { type: 'approval', approval: req, phase: 'waiting_for_permission', phaseTool: toolName }
+      })
+    }
+  })
+}
+
+/** 请求一次「向用户提问」 —— 返回用户答案（skipped 表示用户跳过） */
+export function requestQuestion(
+  win: BrowserWindow | null,
+  conversationId: string,
+  question: Omit<UserQuestion, 'id'>,
+  id: string
+): Promise<QuestionAnswer> {
+  const q: UserQuestion = { ...question, id }
+  return new Promise<QuestionAnswer>((resolve) => {
+    pendingQuestions.set(conversationId, { id, resolve })
+    if (win && !win.isDestroyed()) {
+      win.webContents.send(IPC.chatStreamEvent, {
+        conversationId,
+        chunk: { type: 'question', question: q, phase: 'waiting_for_user' }
+      })
+    }
+  })
+}
 
 /**
  * IPC 中枢 —— 对齐 WorkBuddy 的 handler-registry 模式：
@@ -34,6 +136,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC.deleteConversation, (_e, id: string) => {
     getStore().deleteConversation(id)
+    clearSessionDecisions(id)
     return true
   })
 
@@ -114,7 +217,7 @@ export function registerIpcHandlers(): void {
 
     // 累积 assistant 流式内容，结束后落库（含错误态/停止原因：保证 DB 行与 UI 行一致）
     let assistantContent = ''
-    let assistantError: { error: string; errorKind: ErrorKind; errorHint: string } | null = null
+    let assistantError: { error: string; errorKind: ErrorKind; errorHint: string; errorCode: string } | null = null
     let assistantStopReason: StopReason | undefined
     const assistantId = req.assistantMessageId ?? crypto.randomUUID()
     const persistAssistant = () => {
@@ -127,7 +230,8 @@ export function registerIpcHandlers(): void {
         createdAt: req.assistantMessageCreatedAt ?? Date.now(),
         error: assistantError?.error,
         errorKind: assistantError?.errorKind,
-        stopReason: assistantStopReason
+        stopReason: assistantStopReason,
+        errorCode: assistantError?.errorCode
       })
     }
 
@@ -137,16 +241,22 @@ export function registerIpcHandlers(): void {
       error?: string
       errorKind?: ErrorKind
       errorHint?: string
+      errorCode?: string
       stopReason?: StopReason
       phase?: ProgressPhase
       phaseTool?: string
+      approval?: ApprovalRequest
+      question?: UserQuestion
+      toolCall?: ToolCall
+      toolResult?: { id: string; name: string; ok: boolean; output: string }
     }) => {
       if (chunk.type === 'delta') assistantContent += chunk.content ?? ''
       if (chunk.type === 'error' && chunk.error) {
         assistantError = {
           error: chunk.error,
           errorKind: (chunk.errorKind ?? 'unknown') as ErrorKind,
-          errorHint: chunk.errorHint ?? 'unknown'
+          errorHint: chunk.errorHint ?? 'unknown',
+          errorCode: chunk.errorCode ?? 'generic'
         }
       }
       if (chunk.type === 'done' && chunk.stopReason) assistantStopReason = chunk.stopReason
@@ -157,11 +267,21 @@ export function registerIpcHandlers(): void {
 
     try {
       // 网络异常包装：fetch 抛错时也带上分类
-      await streamChat({ ...req, settings }, send, abort.signal)
+      // 注入交互 hooks：让工具链路能把审批 / 提问挂起请求抛给渲染层并等回执
+      await streamChat({ ...req, settings }, send, abort.signal, {
+        requestApproval: (toolName, id) => requestApproval(win, req.conversationId, toolName, id),
+        requestQuestion: (question, id) => requestQuestion(win, req.conversationId, question, id)
+      })
       persistAssistant()
     } catch (err) {
       const classified = classifyError(err)
-      send({ type: 'error', error: classified.message, errorKind: classified.kind, errorHint: classified.hint })
+      send({
+        type: 'error',
+        error: classified.message,
+        errorKind: classified.kind,
+        errorHint: classified.hint,
+        errorCode: classified.code
+      })
       persistAssistant()
     } finally {
       activeStreams.delete(req.conversationId)
@@ -177,6 +297,41 @@ export function registerIpcHandlers(): void {
     }
     return true
   })
+
+  // ---------- 工具审批（对齐 tool.approval.*） ----------
+  ipcMain.handle(
+    IPC.approvalDecide,
+    (_e, conversationId: string, decision: ApprovalDecision, approvalId?: string): boolean => {
+      const pending = pendingApprovals.get(conversationId)
+      // 校验挂起 id，防止过期卡片的回执误触发新的挂起交互
+      if (!pending || (approvalId && pending.id !== approvalId)) return false
+      pendingApprovals.delete(conversationId)
+      pending.resolve(decision)
+      // 记忆「始终允许」（会话级 / 启动级）
+      if (decision === 'alwaysAllowSession' || decision === 'alwaysAllowLaunch') {
+        rememberDecision(conversationId, approvalId ?? '', decision)
+      }
+      return true
+    }
+  )
+
+  // ---------- 向用户提问（对齐 tool.askUserQuestion.*） ----------
+  ipcMain.handle(
+    IPC.answerQuestion,
+    (_e, conversationId: string, questionId: string, answers: string[], skipped?: boolean): boolean => {
+      const pending = pendingQuestions.get(conversationId)
+      if (!pending || pending.id !== questionId) return false
+      pendingQuestions.delete(conversationId)
+      pending.resolve({ id: questionId, answers: answers ?? [], skipped: !!skipped })
+      return true
+    }
+  )
+
+  // ---------- 会话数量上限（对齐 conversation.maxSessions.dialog.*） ----------
+  ipcMain.handle(IPC.conversationLimit, () => {
+    const count = getStore().countConversations()
+    return { reached: count >= MAX_SESSIONS, max: MAX_SESSIONS, count }
+  })
 }
 
-export { activeStreams }
+export { activeStreams, pendingApprovals, pendingQuestions, sessionDecisions, launchDecisions }

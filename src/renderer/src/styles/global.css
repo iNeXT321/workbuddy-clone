@@ -1584,3 +1584,346 @@ body {
   line-height: 1.5;
   margin-top: -4px;
 }
+
+/* ---------- 第八轮：审批流 / 向用户提问 / 工具结果 / 相对时间 ---------- */
+
+/* 工具审批卡片（对齐 tool.approval.*） */
+.interactive-row {
+  display: flex;
+  justify-content: flex-start;
+  padding: 6px 24px;
+}
+
+.approval-card {
+  width: min(560px, 100%);
+  border: 1px solid var(--border);
+  border-left: 3px solid #e0a200;
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  padding: 12px 14px;
+}
+
+.approval-card.decided {
+  opacity: 0.85;
+  border-left-color: var(--text-secondary);
+}
+
+.approval-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.approval-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.approval-risk {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: rgba(224, 162, 0, 0.16);
+  color: #e0a200;
+  border: 1px solid rgba(224, 162, 0, 0.4);
+}
+
+.approval-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.approval-tool {
+  margin-top: 8px;
+}
+
+.approval-tool-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.approval-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.approval-actions .msg-action {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  color: var(--text);
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.approval-actions .msg-action:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.approval-actions .msg-action.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.approval-actions .msg-action.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  color: #fff;
+}
+
+.approval-decision {
+  margin-top: 10px;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+.approval-decision.approved {
+  background: rgba(79, 140, 255, 0.14);
+  color: var(--accent);
+}
+
+.approval-decision.rejected {
+  background: rgba(229, 72, 77, 0.14);
+  color: var(--danger);
+}
+
+/* 向用户提问卡片（对齐 tool.askUserQuestion.*） */
+.question-card {
+  width: min(560px, 100%);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  padding: 12px 14px;
+}
+
+.question-card.answered {
+  opacity: 0.85;
+  border-left-color: var(--text-secondary);
+}
+
+.question-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.question-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.question-header {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.question-body {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.question-option {
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  color: var(--text);
+  padding: 7px 10px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.question-option:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.question-option.selected {
+  border-color: var(--accent);
+  background: rgba(79, 140, 255, 0.12);
+}
+
+.question-option-label {
+  font-size: 13px;
+}
+
+.question-option-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.question-input {
+  width: 100%;
+  margin-top: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.question-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.question-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.question-actions .msg-action,
+.question-actions .msg-action.primary {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  color: var(--text);
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.question-actions .msg-action.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.question-result {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* 工具执行结果卡片 */
+.tool-results {
+  padding: 4px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tool-result {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.tool-result-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  list-style: none;
+}
+
+.tool-result-head::-webkit-details-marker {
+  display: none;
+}
+
+.tool-result-name {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+.tool-result-status {
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 8px;
+}
+
+.tool-result-status.ok {
+  color: var(--accent);
+  background: rgba(79, 140, 255, 0.14);
+}
+
+.tool-result-status.fail {
+  color: var(--danger);
+  background: rgba(229, 72, 77, 0.14);
+}
+
+.tool-result-body {
+  margin: 0;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 260px;
+  overflow: auto;
+}
+
+/* 侧边栏：相对时间 / 空态 / 上限提示 */
+.conversation-time {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.75;
+}
+
+.empty-hint .empty-title {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.limit-banner {
+  margin: 8px 10px 0;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  background: rgba(224, 162, 0, 0.14);
+  border: 1px solid rgba(224, 162, 0, 0.4);
+  color: #e0a200;
+}
+
+/* 错误码角标 + 欢迎页免责声明 */
+.error-card-code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 0 6px;
+}
+
+.welcome-disclaimer {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  opacity: 0.8;
+}

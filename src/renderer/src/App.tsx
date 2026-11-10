@@ -71,6 +71,7 @@ export default function App() {
         currentId={app.currentId}
         searchQuery={app.searchQuery}
         showArchived={app.showArchived}
+        limitReached={app.conversationLimit.reached}
         onSelect={app.selectConversation}
         onNew={app.newConversation}
         onDelete={app.removeConversation}
@@ -103,6 +104,12 @@ export default function App() {
           streaming={app.streaming}
           phase={app.phase}
           phaseTool={app.phaseTool}
+          pendingApproval={app.pendingApproval}
+          pendingQuestion={app.pendingQuestion}
+          toolResults={app.toolResults}
+          onDecideApproval={app.decideApproval}
+          onAnswerQuestion={app.answerQuestion}
+          onSkipQuestion={app.skipQuestion}
           onRegenerate={app.regenerate}
           onDelete={app.removeMessage}
           onEdit={app.editMessage}

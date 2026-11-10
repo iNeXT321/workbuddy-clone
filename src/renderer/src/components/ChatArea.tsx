@@ -1,8 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChatMessage, ProgressPhase, StopReason } from '../../../shared/types'
+import type {
+  ChatMessage,
+  ProgressPhase,
+  StopReason,
+  ApprovalRequest,
+  ApprovalDecision,
+  UserQuestion
+} from '../../../shared/types'
+import { lookupErrorCode } from '../../../shared/errorCodes'
 import Markdown from './Markdown'
+import ApprovalCard from './ApprovalCard'
+import QuestionCard from './QuestionCard'
 import { toast } from '../stores/useToast'
 import { useTranslation } from '../i18n'
+
+export interface ToolResultItem {
+  id: string
+  name: string
+  ok: boolean
+  output: string
+}
 
 interface Props {
   messages: ChatMessage[]
@@ -10,6 +27,15 @@ interface Props {
   // 当前处理阶段（对齐 progress.phase.*）
   phase?: ProgressPhase | null
   phaseTool?: string | null
+  // 挂起的工具审批（对齐 tool.approval.*）
+  pendingApproval?: ApprovalRequest | null
+  // 挂起的向用户提问（对齐 tool.askUserQuestion.*）
+  pendingQuestion?: (UserQuestion & { id: string }) | null
+  // 本轮工具执行结果
+  toolResults?: ToolResultItem[]
+  onDecideApproval: (decision: ApprovalDecision) => void
+  onAnswerQuestion: (answers: string[]) => void
+  onSkipQuestion: () => void
   onRegenerate: (assistantId: string) => void
   onDelete: (messageId: string) => void
   onEdit: (messageId: string, newText: string) => void
@@ -27,6 +53,12 @@ export default function ChatArea({
   streaming,
   phase,
   phaseTool,
+  pendingApproval,
+  pendingQuestion,
+  toolResults,
+  onDecideApproval,
+  onAnswerQuestion,
+  onSkipQuestion,
   onRegenerate,
   onDelete,
   onEdit,
@@ -194,6 +226,7 @@ export default function ChatArea({
         <div className="welcome">
           <h2>{t('chat.welcome')}</h2>
           <p>{t('chat.welcomeHint')}</p>
+          <p className="welcome-disclaimer">{t('common.aiDisclaimer')}</p>
         </div>
       )}
       {messages.map((m) => (
@@ -257,10 +290,19 @@ export default function ChatArea({
               <div className={`error-card kind-${m.errorKind ?? 'unknown'}`}>
                 <div className="error-card-head">
                   <span className="error-card-title">
-                    {t(`error.${m.errorKind ?? 'unknown'}.title`).replace('{model}', '')}
+                    {(() => {
+                      // 优先用结构化错误码标题（对齐原版 errorCode.*），无则回落到分类标题
+                      const entry = lookupErrorCode(m.errorCode)
+                      return entry
+                        ? entry.title
+                        : t(`error.${m.errorKind ?? 'unknown'}.title`).replace('{model}', '')
+                    })()}
                   </span>
+                  {m.errorCode && <span className="error-card-code">{(m.errorCode)}</span>}
                 </div>
-                <div className="error-card-body">{t(`error.${m.errorKind ?? 'unknown'}.message`)}</div>
+                <div className="error-card-body">
+                  {lookupErrorCode(m.errorCode)?.desc ?? t(`error.${m.errorKind ?? 'unknown'}.message`)}
+                </div>
                 <div className="error-card-raw" title={m.error}>
                   {m.error}
                 </div>
@@ -319,6 +361,42 @@ export default function ChatArea({
           )}
         </div>
       ))}
+      {/* 本轮工具执行结果（对齐原版工具卡片） */}
+      {toolResults && toolResults.length > 0 && (
+        <div className="tool-results">
+          {toolResults.map((r, i) => (
+            <details key={`${r.id}-${i}`} className={`tool-result ${r.ok ? 'ok' : 'fail'}`}>
+              <summary className="tool-result-head">
+                <span className="tool-result-name">{r.name}</span>
+                <span className={`tool-result-status ${r.ok ? 'ok' : 'fail'}`}>
+                  {r.ok ? '完成' : '失败'}
+                </span>
+              </summary>
+              <pre className="tool-result-body">{r.output}</pre>
+            </details>
+          ))}
+        </div>
+      )}
+
+      {/* 工具审批卡片（对齐 tool.approval.*）：挂起等待用户授权 */}
+      {pendingApproval && (
+        <div className="interactive-row">
+          <ApprovalCard req={pendingApproval} disabled={false} onDecide={onDecideApproval} />
+        </div>
+      )}
+
+      {/* 向用户提问卡片（对齐 tool.askUserQuestion.*） */}
+      {pendingQuestion && (
+        <div className="interactive-row">
+          <QuestionCard
+            question={pendingQuestion}
+            disabled={false}
+            onAnswer={onAnswerQuestion}
+            onSkip={onSkipQuestion}
+          />
+        </div>
+      )}
+
       <div ref={endRef} />
     </div>
   )

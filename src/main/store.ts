@@ -46,7 +46,8 @@ class Store {
         attachments TEXT,
         error TEXT,
         error_kind TEXT,
-        stop_reason TEXT
+        stop_reason TEXT,
+        error_code TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id);
     `)
@@ -66,6 +67,10 @@ class Store {
     // 兼容旧库：messages 表补 stop_reason 列（停止原因持久化）
     if (!cols.some((c) => c.name === 'stop_reason')) {
       this.db.exec('ALTER TABLE messages ADD COLUMN stop_reason TEXT')
+    }
+    // 兼容旧库：messages 表补 error_code 列（结构化错误码持久化）
+    if (!cols.some((c) => c.name === 'error_code')) {
+      this.db.exec('ALTER TABLE messages ADD COLUMN error_code TEXT')
     }
 
     // 兼容旧库：conversations 表补 pinned / archived 列（对齐原版置顶 / 归档）
@@ -202,6 +207,12 @@ class Store {
     return { id, title: title || '新对话', createdAt: now, updatedAt: now, pinned: false, archived: false, messages: [] }
   }
 
+  // 会话数量（不含归档）—— 供会话上限提示使用（对齐 conversation.maxSessions.dialog.*）
+  countConversations(): number {
+    const row = this.db.prepare('SELECT COUNT(*) AS n FROM conversations WHERE archived = 0').get() as { n: number }
+    return row.n
+  }
+
   getConversation(id: string): Conversation | null {
     const row = this.db.prepare('SELECT * FROM conversations WHERE id = ?').get(id) as
       | { id: string; title: string; created_at: number; updated_at: number; pinned: number; archived: number }
@@ -218,6 +229,7 @@ class Store {
       error: string | null
       error_kind: string | null
       stop_reason: string | null
+      error_code: string | null
     }>
     return {
       id: row.id,
@@ -234,7 +246,8 @@ class Store {
         attachments: m.attachments ? (JSON.parse(m.attachments) as ChatMessage['attachments']) : undefined,
         error: m.error ?? undefined,
         errorKind: (m.error_kind as ChatMessage['errorKind']) ?? undefined,
-        stopReason: (m.stop_reason as ChatMessage['stopReason']) ?? undefined
+        stopReason: (m.stop_reason as ChatMessage['stopReason']) ?? undefined,
+        errorCode: m.error_code ?? undefined
       }))
     }
   }
@@ -243,15 +256,16 @@ class Store {
     // 幂等写入：同一消息 id 重复落库（重试/重放）时覆盖而非抛 UNIQUE 约束错误
     this.db
       .prepare(
-        `INSERT INTO messages (id, conversation_id, role, content, created_at, attachments, error, error_kind, stop_reason)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO messages (id, conversation_id, role, content, created_at, attachments, error, error_kind, stop_reason, error_code)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            content = excluded.content,
            created_at = excluded.created_at,
            attachments = excluded.attachments,
            error = excluded.error,
            error_kind = excluded.error_kind,
-           stop_reason = excluded.stop_reason`
+           stop_reason = excluded.stop_reason,
+           error_code = excluded.error_code`
       )
       .run(
         msg.id,
@@ -262,7 +276,8 @@ class Store {
         msg.attachments && msg.attachments.length ? JSON.stringify(msg.attachments) : null,
         msg.error ?? null,
         msg.errorKind ?? null,
-        msg.stopReason ?? null
+        msg.stopReason ?? null,
+        msg.errorCode ?? null
       )
     this.db
       .prepare('UPDATE conversations SET updated_at = ? WHERE id = ?')

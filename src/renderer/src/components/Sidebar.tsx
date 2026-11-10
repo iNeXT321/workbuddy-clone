@@ -7,6 +7,8 @@ interface Props {
   currentId: string | null
   searchQuery: string
   showArchived: boolean
+  // 会话数量上限状态（对齐 conversation.maxSessions.*）
+  limitReached?: boolean
   onSelect: (id: string) => void
   onNew: () => void
   onDelete: (id: string) => void
@@ -18,11 +20,26 @@ interface Props {
   onToggleShowArchived: () => void
 }
 
+/** 相对时间文案（对齐原版 conversation.time.*） */
+function relativeTime(ts: number, t: (k: string) => string): string {
+  const diff = Date.now() - ts
+  const min = 60 * 1000
+  const hour = 60 * min
+  const day = 24 * hour
+  if (diff < min) return t('time.justNow')
+  if (diff < hour) return t('time.minutesAgo').replace('{count}', String(Math.floor(diff / min)))
+  if (diff < day) return t('time.hoursAgo').replace('{count}', String(Math.floor(diff / hour)))
+  if (diff < 2 * day) return t('time.yesterday')
+  if (diff < 365 * day) return t('time.daysAgo').replace('{count}', String(Math.floor(diff / day)))
+  return t('time.yearsAgo').replace('{count}', String(Math.floor(diff / (365 * day))))
+}
+
 export default function Sidebar({
   conversations,
   currentId,
   searchQuery,
   showArchived,
+  limitReached,
   onSelect,
   onNew,
   onDelete,
@@ -73,6 +90,7 @@ export default function Sidebar({
         >
           {c.pinned && <span className="pin-mark">📌</span>}
           {c.title || t('sidebar.new')}
+          <span className="conversation-time">{relativeTime(c.updatedAt, t)}</span>
         </span>
       )}
       <button
@@ -126,6 +144,8 @@ export default function Sidebar({
           +
         </button>
       </div>
+      {/* 会话数量上限提示（对齐 conversation.maxSessions.dialog.*） */}
+      {limitReached && <div className="limit-banner">{t('conversation.limit.content')}</div>}
       <div className="sidebar-search">
         <input
           className="search-input"
@@ -149,7 +169,10 @@ export default function Sidebar({
           </>
         )}
         {conversations.length === 0 && (
-          <div className="empty-hint">{searchQuery ? t('sidebar.emptySearch') : t('sidebar.empty')}</div>
+          <div className="empty-hint">
+            <div className="empty-title">{t('conversation.empty.title')}</div>
+            <div>{searchQuery ? t('sidebar.emptySearch') : t('conversation.empty.description')}</div>
+          </div>
         )}
       </div>
       <div className="sidebar-footer">

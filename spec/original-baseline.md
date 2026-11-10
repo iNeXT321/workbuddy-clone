@@ -197,6 +197,28 @@ MediaPreviewContext     Icons
 - **附加错误横幅动作（事实）—— `errorBanner.action.*`（15 项）**：`retry`=重试、`copyError`=复制错误、`editInput`=重新输入、`checkNetwork`=检查网络、`configureModel`=配置模型、`switchModel`=切换模型、`purchase`=立即购买、`applyQuota`=申请额度、`relogin`=重新登录、`newTask`=新建任务、`reupload`=重新上传、`upgradeClient`=升级客户端、`viewDocs`=查看文档、`feedback`=提交反馈、`acknowledge`=已知晓、`close`=关闭。
 - **错误码体系（事实）—— `errorCode.*`（254 条）**：原版有独立错误码命名空间，`error.code`=`错误码：`、`error.time`=`时间：`、`error.messageId`=`消息 ID：`、`error.original`=`原始错误：`（错误详情面板可展开完整上下文）。
 
+### 5.4 第五次补证：工具链路闭环 + 会话生命周期（第八轮监督依据）
+
+**G. 工具调用闭环（事实）—— `tool.approval.*` / `tool.askUserQuestion.*`**
+
+- **关键结构判断（事实）**：原版是 **agent 形态**，而非一次性问答。`progress.phase.*` 里 `tool_executing` / `waiting_for_permission` / `waiting_for_user` 三个阶段 + 50+ 工具的三态文案（`model_streaming.{Tool}` / `tool_executing.{Tool}` / `waiting_for_permission.{Tool}`）共同证明：模型经 function calling 请求工具 → 主进程审批 → 执行 → 结果回灌 → 继续下一轮。**这是 `tool.approval.*` 与 `tool.askUserQuestion.*` 两大能力域的唯一挂载点**。
+- **审批弹窗（事实）—— `tool.approval.*`**：
+  - `confirmTitle.imageGen`=`确认开始生成图片？`、`confirmTitle.videoGen`=`确认开始生成视频？`、`confirmTitle.computerUse`=`确认开始使用电脑操控能力？`、`confirmTitle.audioTranscribe`=`确认开始音频文件转文字？`、`confirmTitle.imageProcessing`=`确认开始处理图片？`
+  - `riskTag.imageGen`=`产生积分消耗`、`riskTag.videoGen`=`积分消耗较高`、`riskTag.imageProcessing`=`预计产生积分消耗`
+  - `creditHint.imageGen`=`当前模型生成图片将消耗额外积分，每张图片约 5-10积分，请谨慎操作`、`creditHint.videoGen`=`生成视频将消耗额外积分，每 5 秒约 50-100 积分，请谨慎操作`、`creditHint.audioTranscribe`=`当前模型音频文件转文本将消耗额外积分，约 0.6 积分/分钟…实际费用以最终识别的音频时长结算`
+  - **四动作**：`allow`=允许、`alwaysAllowSession`=本次会话始终允许、`alwaysAllowLaunch`=本次启动内始终允许、`reject`=拒绝（含 `decisionApproved`=已确认 / `decisionRejected`=已拒绝 回执态）。
+- **向用户提问（事实）—— `tool.askUserQuestion.*`**：`title`=向用户提问、`waiting`=等待您的回答...、`skipped`=您跳过了此问题。对应 `progress.phase.waiting_for_user.AskUserQuestion`=等待用户回复；提问支持可选项（单选/多选）与自由输入两种形态（选项结构含 `label` + `description`）。
+- **工具覆盖面（事实）**：`Read`/`Write`/`Edit`/`MultiEdit`/`Glob`/`Grep`/`Bash`/`PowerShell`/`LS`/`LSP`/`WebFetch`/`WebSearch`/`ImageGen`/`ImageEdit`/`ComputerUse`/`Notebook*`/`Skill`/`SlashCommand`/`Agent`/`Task*`/`Team*`/`Memory*`/`Cron*`/`TodoWrite`/`ToolSearch`/`AskUserQuestion` 等（详见 §5.3 §F 工具三态清单）。
+
+**H. 会话生命周期与时间展示（事实）—— `conversation.*` 补充 + `common.*`**
+
+- **会话上限（事实）—— `conversation.maxSessions.dialog.*`**：达上限时阻断新建，文案「您已达到最大会话数量限制，请先归档或删除一些会话后再创建新会话。」→ 会话数量有硬上限，且上限状态需在侧栏或新建入口体现。
+- **相对时间（事实）—— `conversation.time.*`**：`justNow`=刚刚、`minutesAgo`={count}分钟前、`hoursAgo`={count}小时前、`yesterday`=昨天、`daysAgo`={count}天前、`yearsAgo`={count}年前 → 会话列表项展示**相对时间**而非绝对时间戳。
+- **空态分文案（事实）**：`conversation.empty.title`=暂无任务 + `conversation.empty.description`=点击上方按钮开始新任务（标题/描述两层，与「搜索无结果」态分开）。
+- **容错文案（事实）**：`conversation.cwdNotExist`=该对话的工作目录可能已被重命名或删除、`conversation.jumpNotFound`=对话记录未找到。
+- **免责声明（事实）—— `common.aiDisclaimer`**=`内容由 AI 生成，请核实重要信息`；`common.loading`=加载中...、`common.initializing`=正在初始化...
+- **错误详情面板（事实）**：`error.code`=错误码：、`error.time`=时间：、`error.messageId`=消息 ID：、`error.original`=原始错误：→ 错误卡片应展示**结构化错误码**（`errorCode.*` 的标题 + `desc`）而非仅分类文案。
+
 ## 6. 本基线文件的边界与限制
 
 - 本基线基于**静态产物清单 + 少量入口源码**，未完整反编译 300+ 模块。

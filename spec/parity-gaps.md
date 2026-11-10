@@ -574,3 +574,80 @@
 > - 运行时冒烟 `smoke-r7.cjs`：**0 控制台报错**；更多操作面板 7 项文案、斜杠面板 10 条指令、权限弹窗标题 + 三项能力 + 勾选放行、设置页新增「权限」「发送消息」字段全部断言通过。
 >
 > **第七轮 open 清零。** deferred 保持：GAP-007（IM 渠道 / 遥测 / 守护进程）、GAP-011（monaco 代码审阅器）。
+
+---
+
+## 第八轮监督（工具链路闭环与交互能力，GAP-041~045）
+
+> 基线依据：`original-baseline.md §5.3 §G`（本轮新增）—— 解码 i18n 全集后新增的四组能力域：
+> `tool.approval.*`（确认标题 / 风险标签 / 积分提示 / 四动作）、`tool.askUserQuestion.*`、
+> `conversation.maxSessions.*` 与相对时间 / 空态、`common.aiDisclaimer`。
+> 本轮的核心发现：**前七轮把「错误处理、可观测性、输入区」都对齐了，但工具调用这一层从未真正打通** ——
+> 原版是「模型发起工具调用 → 审批 → 执行 → 结果回灌」的 agent 循环，而本复刻只是一次性 SSE 流，
+> 导致 `tool.approval.*` / `tool.askUserQuestion.*` 两大能力域虽然文案齐备却**无任何触发路径**。
+
+### GAP-041 · 无 agent 工具循环：`tool_calls` 被丢弃，工具能力不可达
+
+- **严重级**：P0（核心能力缺失）
+- **维度**：主进程
+- **基线依据**：原版为 agent 形态 —— 模型通过 function calling 请求工具，主进程执行后回灌结果并继续下一轮，直到模型给出最终文本；`tool.approval.*` 与 `tool.askUserQuestion.*` 均挂在这条链路上。
+- **现状**：`streamChat` 只解析 `choices[0].delta.content`，**`delta.tool_calls` 被完全忽略**；请求体不带 `tools` 字段。模型即便返回工具调用也不会被执行，更不会触发审批与提问。这直接导致 GAP-042/043 的能力文案"有壳无实"。
+- **期望**：请求体按模式挂载 `tools`（仅问答模式不挂）；解析并累积分片式 `tool_calls`（按 `index` 合并 `id`/`name`/`arguments`）；维护多轮循环（上限 12 轮），逐轮把 `assistant.tool_calls` 与 `role:tool` 结果回灌上下文；触顶时以 `maxTurnRequests` 停止原因收尾；`ask` 模式下即使服务端返回 `tool_calls` 也不执行（防越权）。
+- **验证方法**：链路冒烟 `smoke-r8-chain.mjs` —— 假 SSE 服务端返回 `tool_calls` 时，断言模型被连续请求 3 轮、第 2/3 轮请求体含 `assistant.tool_calls` 与 `role=tool` 消息、`ask` 模式请求体不带 `tools` 且仅 1 轮。
+- **修改文件**：src/main/llm.ts（`requestOnce` 抽取 + 多轮循环 + `tool_calls` 累积）、src/main/tools.ts（新增：`TOOL_DEFS` 9 个工具 / `TOOL_CANONICAL` / `executeTool`）
+- **状态**：resolved
+
+### GAP-042 · 工具审批流无实现：`tool.approval.*` 文案齐备但无触发路径
+
+- **严重级**：P1（安全与可控性）
+- **维度**：主进程 + 渲染层
+- **基线依据**：`tool.approval.*` —— `confirmTitle.{imageGen|videoGen|computerUse|audioTranscribe|imageProcessing}`（如「确认开始生成图片？」）、`riskTag.*`（「产生积分消耗」/「积分消耗较高」）、`creditHint.*`（含具体积分区间的消耗说明）、四动作 `allow` / `alwaysAllowSession` / `alwaysAllowLaunch` / `reject`。
+- **现状**：完全缺失。高消耗/高风险工具（图片生成、视频生成、电脑操控、音频转写、图片处理）会**无提示直接执行**。
+- **期望**：主进程在默认权限下遇到需审批工具时**挂起**（`pendingApprovals` + Promise await），发 `approval` 分片并在 `waiting_for_permission` 阶段停留；渲染层渲染卡片（标题 + 风险标签 + 消耗提示 + 工具名 + 四动作）；用户点选经 IPC 回执 resolve，链路继续执行或回灌拒绝说明；`alwaysAllowSession` / `alwaysAllowLaunch` 分别记入会话级 / 启动级记忆集合，后续同类工具直接放行；`fullAccess` 跳过审批；**过期卡片回执按 id 校验丢弃**，防止误触发新挂起。
+- **验证方法**：链路冒烟 —— 断言发起 1 次 `ImageGen` 审批、拒绝路径回灌「用户拒绝了该操作」且**不发出该工具的 tool-result**、`fullAccess` 下审批回调调用次数为 0；运行时冒烟 —— 断言卡片标题/风险标签/消耗提示/工具名/四动作顺序、点击「允许」后显示「已确认」且链路被唤醒产出最终回复。
+- **修改文件**：src/shared/errorCodes.ts（`APPROVAL_RULES` / `TOOL_TO_APPROVAL` / `approvalToolFor` / `needsApproval`）、src/main/ipc.ts（`requestApproval` + `pendingApprovals` + `preAuthorized` 记忆 + `approvalDecide` handler）、src/main/llm.ts（审批分支）、ApprovalCard.tsx（新增）、useApp.ts（`pendingApproval` + `decideApproval`）、ChatArea.tsx、preload、i18n、global.css
+- **状态**：resolved
+
+### GAP-043 · 向用户提问能力缺失：`tool.askUserQuestion.*` 无实现
+
+- **严重级**：P1（交互闭环）
+- **维度**：主进程 + 渲染层
+- **基线依据**：`tool.askUserQuestion.*` —— `title`=「向用户提问」、`waiting`=「等待您的回答...」、`skipped`=「您跳过了此问题」；提问支持可选项（单选/多选）与自由输入两种形态。
+- **现状**：完全缺失。模型无法向用户澄清需求或让用户做选择，只能一路猜测。
+- **期望**：主进程把 `ask_user_question` 工具的入参（`question` / `header` / `options` / `multiSelect`）解析为 `UserQuestion`，挂起并发 `question` 分片、停在 `waiting_for_user` 阶段；渲染层渲染问题卡片（有选项→可点选、无选项→自由输入、支持多选），提交或跳过经 IPC 回执；跳过时回灌「用户跳过了此问题，请基于合理假设继续」；非法 JSON 入参退化为纯文本问题。
+- **验证方法**：链路冒烟 —— 断言按 `options` 正确解析（2 个选项 + `multiSelect`）、非法 JSON 退化、回答「卡通」出现在第 3 轮请求体；逻辑冒烟 7 项解析断言全通过。
+- **修改文件**：src/main/tools.ts（`parseQuestion` / `isAskUserQuestion`）、src/main/ipc.ts（`requestQuestion` + `pendingQuestions` + `answerQuestion` handler 含 `skipped`）、src/main/llm.ts（提问分支）、QuestionCard.tsx（新增）、useApp.ts（`pendingQuestion` + `answerQuestion` / `skipQuestion`）、ChatArea.tsx、preload、i18n、global.css
+- **状态**：resolved
+
+### GAP-044 · 会话数量无上限：`conversation.maxSessions.*` 未实现
+
+- **严重级**：P2（健壮性）
+- **维度**：主进程 + 渲染层
+- **基线依据**：`conversation.maxSessions.dialog.*` —— 达到上限时拒绝新建并提示「您已达到最大会话数量限制，请先归档或删除一些会话后再创建新会话。」
+- **现状**：`createConversation` 无任何上限校验，会话可无限增长。
+- **期望**：主进程提供计数接口（`countConversations` 排除已归档）；新建会话前查询，达上限则拒绝并提示，侧栏同步展示上限横幅；上限常量 500。
+- **验证方法**：DB 冒烟 —— 断言计数为 2、归档后降为 1；逻辑冒烟 —— `MAX_SESSIONS === 500`。
+- **修改文件**：src/shared/errorCodes.ts（`MAX_SESSIONS`）、src/main/store.ts（`countConversations`）、src/main/ipc.ts（`conversationLimit` handler）、useApp.ts（`newConversation` 前置校验 + `conversationLimit` 状态）、Sidebar.tsx（`.limit-banner`）、App.tsx、preload、i18n、global.css
+- **状态**：resolved
+
+### GAP-045 · 会话列表无相对时间与空态分文案，缺 AI 免责声明
+
+- **严重级**：P2（体验对齐）
+- **维度**：渲染层
+- **基线依据**：`conversation.time.*`（`justNow`=刚刚 / `minutesAgo`={count}分钟前 / `hoursAgo` / `yesterday`=昨天 / `daysAgo` / `yearsAgo`）、`conversation.empty.title`=暂无任务 + `description`=点击上方按钮开始新任务、`common.aiDisclaimer`=内容由 AI 生成，请核实重要信息；另有 `conversation.cwdNotExist` / `jumpNotFound` 两条容错文案。
+- **现状**：会话项**只显示标题**，无时间信息；空态仅一句「暂无会话」，既无标题/描述分层也不区分搜索空态；对话区与欢迎页**没有 AI 免责声明**；错误卡片只按分类给标题，未展示结构化错误码。
+- **期望**：会话项追加相对时间（按 分钟/小时/昨天/天/年 分档）；空态改为标题 + 描述两层（搜索态单独文案）；欢迎页与对话区展示免责声明；错误卡片展示 `errorCode.*` 的标题与 `desc`（回落分类文案）并附错误码角标。
+- **验证方法**：逻辑冒烟 —— 错误码 `lookupErrorCode('3002')` 等标题/desc 断言、`ERROR_CODES` 全项含 `desc`；运行时冒烟 —— 0 控制台报错。
+- **修改文件**：Sidebar.tsx（`relativeTime` + 空态分层）、ChatArea.tsx（`lookupErrorCode` 渲染 + `.welcome-disclaimer`）、i18n（`time.*` / `conversation.*` / `common.*` / `error.code`）、global.css
+- **状态**：resolved
+
+---
+
+> 闭环状态（第八轮）：GAP-041 / 042 / 043 / 044 / 045 全部 **resolved 并复检通过**。
+>
+> - 逻辑冒烟 `smoke-r8-logic.mjs`：**57/57 通过**（工具表与审批规则 22、提问解析 7、工具执行器 7、错误码体系 14、常量 1，含真实文件读写往返）。
+> - 链路冒烟 `smoke-r8-chain.mjs`：**21/21 通过**（假 SSE 服务端驱动的 5 个场景：审批放行 + 提问作答、审批拒绝、ask 模式不挂工具、fullAccess 跳过审批、只读工具真实执行）。
+> - DB 冒烟 `smoke-r8-db.mjs`：**13/13 通过**（旧库补列 2、error_code/stopReason 往返 6、会话计数 2、设置默认值 3）。
+> - 运行时冒烟 `smoke-r8.cjs`：**13/13 通过**，渲染层 **0 控制台报错**；真实 UI 路径（输入框填文本 → 点发送）下审批卡片完整渲染，点击「允许」后主进程挂起的链路被唤醒、工具结果卡片展示、最终回复收尾。
+>
+> **第八轮 open 清零。** deferred 保持：GAP-007（IM 渠道 / 遥测 / 守护进程）、GAP-011（monaco 代码审阅器）。
