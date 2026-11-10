@@ -1,4 +1,6 @@
-import { ipcMain, BrowserWindow } from 'electron'
+import { ipcMain, BrowserWindow, dialog, app } from 'electron'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { IPC } from '../shared/types'
 import type { StreamRequest, ChatMessage } from '../shared/types'
 import { getStore } from './store'
@@ -38,6 +40,49 @@ export function registerIpcHandlers(): void {
     return true
   })
 
+  ipcMain.handle(IPC.searchConversations, (_e, query: string) => {
+    if (!query || !query.trim()) return getStore().listConversations()
+    return getStore().searchConversations(query.trim())
+  })
+
+  // ---------- 消息级操作 ----------
+  ipcMain.handle(IPC.deleteMessage, (_e, conversationId: string, messageId: string) => {
+    getStore().deleteMessage(conversationId, messageId)
+    return true
+  })
+
+  ipcMain.handle(IPC.truncateFrom, (_e, conversationId: string, fromMessageId: string) => {
+    getStore().truncateFromId(conversationId, fromMessageId)
+    return true
+  })
+
+  // ---------- 会话导出 ----------
+  ipcMain.handle(IPC.exportConversation, async (_e, id: string) => {
+    const conv = getStore().getConversation(id)
+    if (!conv) return { ok: false }
+    const title = conv.title || 'conversation'
+    const safe = title.replace(/[\\/:*?"<>|]/g, '_').slice(0, 60)
+    const lines = [`# ${title}`, '']
+    for (const m of conv.messages) {
+      lines.push(`## ${m.role === 'user' ? '我' : 'WorkBuddy'}`)
+      lines.push('')
+      lines.push(m.content)
+      lines.push('')
+    }
+    const markdown = lines.join('\n')
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: '导出会话',
+      defaultPath: join(app.getPath('downloads'), `${safe}.md`),
+      filters: [
+        { name: 'Markdown', extensions: ['md'] },
+        { name: '纯文本', extensions: ['txt'] }
+      ]
+    })
+    if (canceled || !filePath) return { ok: false }
+    writeFileSync(filePath, markdown, 'utf-8')
+    return { ok: true, filePath }
+  })
+
   // ---------- 对话流 ----------
   ipcMain.handle(IPC.chatStream, async (event, req: StreamRequest) => {
     const win = BrowserWindow.fromWebContents(event.sender)
@@ -47,7 +92,34 @@ export function registerIpcHandlers(): void {
     // 主进程读取解密后的 key（渲染层拿不到明文）
     const settings = { ...req.settings, apiKey: getStore().getApiKey() || req.settings.apiKey }
 
-    const send = (chunk: unknown) => {
+    // 落库用户消息：优先用渲染层传的 id/时间戳（保证 DB 行与 UI 行一致，支撑后续删除/重新生成）
+    const lastUser = [...req.messages].reverse().find((m) => m.role === 'user')
+    const userId = req.userMessageId ?? crypto.randomUUID()
+    if (lastUser) {
+      getStore().appendMessage(req.conversationId, {
+        id: userId,
+        role: 'user',
+        content: lastUser.content,
+        createdAt: req.userMessageCreatedAt ?? Date.now(),
+        attachments: lastUser.attachments
+      })
+    }
+
+    // 累积 assistant 流式内容，结束后落库
+    let assistantContent = ''
+    const assistantId = req.assistantMessageId ?? crypto.randomUUID()
+    const persistAssistant = () => {
+      if (!assistantContent) return
+      getStore().appendMessage(req.conversationId, {
+        id: assistantId,
+        role: 'assistant',
+        content: assistantContent,
+        createdAt: req.assistantMessageCreatedAt ?? Date.now()
+      })
+    }
+
+    const send = (chunk: { type: string; content?: string; error?: string }) => {
+      if (chunk.type === 'delta') assistantContent += chunk.content ?? ''
       if (win && !win.isDestroyed()) {
         win.webContents.send(IPC.chatStreamEvent, { conversationId: req.conversationId, chunk })
       }
@@ -55,9 +127,11 @@ export function registerIpcHandlers(): void {
 
     try {
       await streamChat({ ...req, settings }, send, abort.signal)
+      persistAssistant()
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       send({ type: 'error', error: message })
+      persistAssistant()
     } finally {
       activeStreams.delete(req.conversationId)
     }

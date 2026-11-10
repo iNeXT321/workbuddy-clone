@@ -40,10 +40,17 @@ class Store {
         conversation_id TEXT NOT NULL,
         role TEXT NOT NULL,
         content TEXT NOT NULL,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        attachments TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id);
     `)
+
+    // 兼容旧库：老版本 messages 表无 attachments 列，补列（ALTER 幂等失败则忽略）
+    const cols = this.db.prepare('PRAGMA table_info(messages)').all() as Array<{ name: string }>
+    if (!cols.some((c) => c.name === 'attachments')) {
+      this.db.exec('ALTER TABLE messages ADD COLUMN attachments TEXT')
+    }
   }
 
   // ---------- 设置 ----------
@@ -56,7 +63,9 @@ class Store {
       apiKey: '',
       model: 'gpt-4o-mini',
       temperature: 0.7,
-      theme: 'dark'
+      theme: 'dark',
+      locale: 'zh-CN',
+      mode: 'default'
     }
     if (!row) return defaults
     try {
@@ -134,8 +143,8 @@ class Store {
       | undefined
     if (!row) return null
     const msgs = this.db
-      .prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC')
-      .all(id) as Array<{ id: string; role: string; content: string; created_at: number }>
+      .prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY rowid ASC')
+      .all(id) as Array<{ id: string; role: string; content: string; created_at: number; attachments: string | null }>
     return {
       id: row.id,
       title: row.title,
@@ -145,18 +154,64 @@ class Store {
         id: m.id,
         role: m.role as ChatMessage['role'],
         content: m.content,
-        createdAt: m.created_at
+        createdAt: m.created_at,
+        attachments: m.attachments ? (JSON.parse(m.attachments) as ChatMessage['attachments']) : undefined
       }))
     }
   }
 
   appendMessage(conversationId: string, msg: ChatMessage): void {
     this.db
-      .prepare('INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)')
-      .run(msg.id, conversationId, msg.role, msg.content, msg.createdAt)
+      .prepare(
+        'INSERT INTO messages (id, conversation_id, role, content, created_at, attachments) VALUES (?, ?, ?, ?, ?, ?)'
+      )
+      .run(
+        msg.id,
+        conversationId,
+        msg.role,
+        msg.content,
+        msg.createdAt,
+        msg.attachments && msg.attachments.length ? JSON.stringify(msg.attachments) : null
+      )
     this.db
       .prepare('UPDATE conversations SET updated_at = ? WHERE id = ?')
       .run(msg.createdAt, conversationId)
+  }
+
+  // 删除单条消息（对齐原版消息级操作）
+  deleteMessage(conversationId: string, messageId: string): void {
+    this.db.prepare('DELETE FROM messages WHERE id = ? AND conversation_id = ?').run(messageId, conversationId)
+  }
+
+  // 截断消息：删除指定消息及其之后的所有消息（按插入顺序 rowid，避免时间戳同毫秒不可靠）
+  truncateFromId(conversationId: string, fromMessageId: string): void {
+    const target = this.db.prepare('SELECT rowid FROM messages WHERE id = ?').get(fromMessageId) as
+      | { rowid: number }
+      | undefined
+    if (!target) return
+    this.db
+      .prepare('DELETE FROM messages WHERE conversation_id = ? AND rowid >= ?')
+      .run(conversationId, target.rowid)
+  }
+
+  // 会话搜索：按标题或消息内容检索（对齐原版 search 能力）
+  searchConversations(query: string): Conversation[] {
+    const q = `%${query}%`
+    const rows = this.db
+      .prepare(
+        `SELECT DISTINCT c.* FROM conversations c
+         LEFT JOIN messages m ON m.conversation_id = c.id
+         WHERE c.title LIKE ? OR m.content LIKE ?
+         ORDER BY c.updated_at DESC`
+      )
+      .all(q, q) as Array<{ id: string; title: string; created_at: number; updated_at: number }>
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      messages: []
+    }))
   }
 
   deleteConversation(id: string): void {

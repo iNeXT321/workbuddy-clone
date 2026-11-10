@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu, shell, nativeTheme } from 'electron'
 import { join } from 'node:path'
 import { registerIpcHandlers } from './ipc'
+import { registerTerminalHandlers } from './terminal'
 import { getStore } from './store'
 
 /**
@@ -12,6 +13,9 @@ function createWindow(): void {
   const settings = getStore().getSettings()
   nativeTheme.themeSource = settings.theme
 
+  // 解析实际外观（system 时取系统当前值）
+  const isDark = settings.theme === 'system' ? nativeTheme.shouldUseDarkColors : settings.theme === 'dark'
+
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -19,7 +23,7 @@ function createWindow(): void {
     minHeight: 480,
     title: 'WorkBuddy',
     show: false,
-    backgroundColor: settings.theme === 'dark' ? '#1e1e1e' : '#ffffff',
+    backgroundColor: isDark ? '#1e1e1e' : '#ffffff',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -75,8 +79,17 @@ function buildMenu(): void {
 
 app.whenReady().then(() => {
   registerIpcHandlers()
+  registerTerminalHandlers()
   buildMenu()
   createWindow()
+
+  // 系统外观变化 → 通知所有窗口，渲染层按「跟随系统」设置实时切换
+  nativeTheme.on('updated', () => {
+    const dark = nativeTheme.shouldUseDarkColors
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send('wb:theme:system-changed', dark ? 'dark' : 'light')
+    }
+  })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
