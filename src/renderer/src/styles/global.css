@@ -1231,3 +1231,68 @@ body {
 .composer {
   position: relative;
 }
+
+/* ---------- 分类化错误卡片（GAP-032/033） ---------- */
+.error-card {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.error-card.kind-network,
+.error-card.kind-timeout,
+.error-card.kind-server,
+.error-card.kind-modelOverload {
+  border-left-color: var(--accent);
+}
+
+.error-card.kind-auth,
+.error-card.kind-unknown {
+  border-left-color: var(--danger, #e5534b);
+}
+
+.error-card.kind-rateLimit {
+  border-left-color: #d29922;
+}
+
+.error-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.error-card-title {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.error-card-body {
+  color: var(--text-dim);
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.error-card-raw {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  max-height: 96px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.error-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}

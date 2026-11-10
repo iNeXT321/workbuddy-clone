@@ -10,11 +10,23 @@ interface Props {
   onRegenerate: (assistantId: string) => void
   onDelete: (messageId: string) => void
   onEdit: (messageId: string, newText: string) => void
+  // 出错后重试上一轮（对齐原版 error.retry）
+  onRetry: (assistantId: string) => void
+  onOpenSettings: () => void
   // 递增信号：全局快捷键（Cmd+F）触发打开对话内搜索
   openSearchSignal?: number
 }
 
-export default function ChatArea({ messages, streaming, onRegenerate, onDelete, onEdit, openSearchSignal }: Props) {
+export default function ChatArea({
+  messages,
+  streaming,
+  onRegenerate,
+  onDelete,
+  onEdit,
+  onRetry,
+  onOpenSettings,
+  openSearchSignal
+}: Props) {
   const { t } = useTranslation()
   const endRef = useRef<HTMLDivElement>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -79,6 +91,18 @@ export default function ChatArea({ messages, streaming, onRegenerate, onDelete, 
   const beginEdit = (m: ChatMessage) => {
     setEditingId(m.id)
     setEditText(m.content)
+  }
+
+  // 复制错误的完整详情（对齐原版 errorBanner.action.copyError）
+  const copyRaw = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedId(`err-${text.slice(0, 8)}`)
+      toast.success(t('error.copied'))
+      setTimeout(() => setCopiedId(null), 1500)
+    } catch {
+      toast.error(t('toast.copyFailed'))
+    }
   }
 
   const commitEdit = (id: string) => {
@@ -197,7 +221,32 @@ export default function ChatArea({ messages, streaming, onRegenerate, onDelete, 
                 {m.content}
               </div>
             )}
-            {m.error && <div className="error-text">{m.error}</div>}
+            {m.error && (
+              <div className={`error-card kind-${m.errorKind ?? 'unknown'}`}>
+                <div className="error-card-head">
+                  <span className="error-card-title">
+                    {t(`error.${m.errorKind ?? 'unknown'}.title`).replace('{model}', '')}
+                  </span>
+                </div>
+                <div className="error-card-body">{t(`error.${m.errorKind ?? 'unknown'}.message`)}</div>
+                <div className="error-card-raw" title={m.error}>
+                  {m.error}
+                </div>
+                <div className="error-card-actions">
+                  <button className="msg-action primary" onClick={() => onRetry(m.id)} disabled={streaming}>
+                    {t('error.retry')}
+                  </button>
+                  <button className="msg-action" onClick={() => copyRaw(m.error!)}>
+                    {copiedId === `err-${m.id}` ? t('error.copied') : t('error.copy')}
+                  </button>
+                  {m.errorKind === 'auth' && (
+                    <button className="msg-action" onClick={onOpenSettings}>
+                      {t('error.auth.action')}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
             {m.streaming && m.content && <span className="cursor" />}
           </div>
           {!m.streaming && editingId !== m.id && (

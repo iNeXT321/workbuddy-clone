@@ -44,6 +44,8 @@ interface AppState {
   sendMessage: (text: string, attachments?: Attachment[]) => Promise<void>
   enqueue: (text: string, attachments?: Attachment[]) => void
   regenerate: (assistantId: string) => Promise<void>
+  // 出错后重试：语义等同重新生成该轮（对齐原版 error.retry）
+  retry: (assistantId: string) => Promise<void>
   removeMessage: (messageId: string) => Promise<void>
   editMessage: (messageId: string, newText: string) => Promise<void>
   stopStreaming: () => Promise<void>
@@ -88,6 +90,8 @@ function applyChunkToMessages(messages: ChatMessage[], chunk: StreamChunk): Chat
         ...last,
         streaming: false,
         error: chunk.error,
+        errorKind: chunk.errorKind,
+        errorHint: chunk.errorHint,
         content: last.content || chunk.error || ''
       }
     }
@@ -317,6 +321,11 @@ export const useAppStore = create<AppState>()((set, get) => {
         assistantMessageId: newAssistant.id,
         assistantMessageCreatedAt: newAssistant.createdAt
       })
+    },
+
+    // 出错后重试：复用 regenerate 的回退 + 重发语义
+    retry: async (assistantId: string) => {
+      await get().regenerate(assistantId)
     },
 
     // 删除单条消息

@@ -11,6 +11,16 @@ export interface Attachment {
   size: number
 }
 
+// 错误分类 —— 对齐原版 error.* / errorBanner.* 的分类与动作语义
+export type ErrorKind =
+  | 'network'
+  | 'timeout'
+  | 'auth'
+  | 'rateLimit'
+  | 'modelOverload'
+  | 'server'
+  | 'unknown'
+
 export interface ChatMessage {
   id: string
   role: 'system' | 'user' | 'assistant'
@@ -20,6 +30,10 @@ export interface ChatMessage {
   streaming?: boolean
   // 出错信息
   error?: string
+  // 错误分类（用于渲染层展示对应标题与建议动作）
+  errorKind?: ErrorKind
+  // 面向用户的建议（如「请检查网络后重试」）
+  errorHint?: string
   // 用户消息携带的图片附件
   attachments?: Attachment[]
 }
@@ -73,6 +87,9 @@ export interface StreamChunk {
   type: 'delta' | 'done' | 'error'
   content?: string
   error?: string
+  // 错误分类与建议（仅 error 分片携带）
+  errorKind?: ErrorKind
+  errorHint?: string
 }
 
 // IPC 通道常量（对齐 WorkBuddy 的 wb: 命名空间，参考本体 wb:conversation:* 风格）

@@ -2,9 +2,9 @@ import { ipcMain, BrowserWindow, dialog, app } from 'electron'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { IPC } from '../shared/types'
-import type { StreamRequest, ChatMessage } from '../shared/types'
+import type { StreamRequest, ChatMessage, ErrorKind } from '../shared/types'
 import { getStore } from './store'
-import { streamChat } from './llm'
+import { streamChat, classifyError } from './llm'
 
 // 活跃的流式请求，按会话取消
 const activeStreams = new Map<string, AbortController>()
@@ -112,32 +112,44 @@ export function registerIpcHandlers(): void {
       })
     }
 
-    // 累积 assistant 流式内容，结束后落库
+    // 累积 assistant 流式内容，结束后落库（含错误态：保证 DB 行与 UI 行一致）
     let assistantContent = ''
+    let assistantError: { error: string; errorKind: ErrorKind; errorHint: string } | null = null
     const assistantId = req.assistantMessageId ?? crypto.randomUUID()
     const persistAssistant = () => {
-      if (!assistantContent) return
+      // 无内容且无错误 → 不落库（例如用户中途取消且未产生任何输出）
+      if (!assistantContent && !assistantError) return
       getStore().appendMessage(req.conversationId, {
         id: assistantId,
         role: 'assistant',
-        content: assistantContent,
-        createdAt: req.assistantMessageCreatedAt ?? Date.now()
+        content: assistantContent || assistantError?.error || '',
+        createdAt: req.assistantMessageCreatedAt ?? Date.now(),
+        error: assistantError?.error,
+        errorKind: assistantError?.errorKind
       })
     }
 
-    const send = (chunk: { type: string; content?: string; error?: string }) => {
+    const send = (chunk: { type: string; content?: string; error?: string; errorKind?: ErrorKind; errorHint?: string }) => {
       if (chunk.type === 'delta') assistantContent += chunk.content ?? ''
+      if (chunk.type === 'error' && chunk.error) {
+        assistantError = {
+          error: chunk.error,
+          errorKind: (chunk.errorKind ?? 'unknown') as ErrorKind,
+          errorHint: chunk.errorHint ?? 'unknown'
+        }
+      }
       if (win && !win.isDestroyed()) {
         win.webContents.send(IPC.chatStreamEvent, { conversationId: req.conversationId, chunk })
       }
     }
 
     try {
+      // 网络异常包装：fetch 抛错时也带上分类
       await streamChat({ ...req, settings }, send, abort.signal)
       persistAssistant()
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      send({ type: 'error', error: message })
+      const classified = classifyError(err)
+      send({ type: 'error', error: classified.message, errorKind: classified.kind, errorHint: classified.hint })
       persistAssistant()
     } finally {
       activeStreams.delete(req.conversationId)

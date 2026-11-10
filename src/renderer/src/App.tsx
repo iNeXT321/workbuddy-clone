@@ -100,6 +100,8 @@ export default function App() {
           onRegenerate={app.regenerate}
           onDelete={app.removeMessage}
           onEdit={app.editMessage}
+          onRetry={app.retry}
+          onOpenSettings={() => setShowSettings(true)}
           openSearchSignal={searchSignal}
         />
         <Composer

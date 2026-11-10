@@ -121,7 +121,28 @@ const zhCN: Dict = {
   'toast.copyFailed': '复制失败',
   'toast.exported': '已导出为 Markdown',
   'toast.exportCanceled': '已取消导出',
-  'toast.regenerated': '已重新生成'
+  'toast.regenerated': '已重新生成',
+  'error.title': '标题：',
+  'error.copy': '复制错误',
+  'error.copied': '已复制',
+  'error.retry': '重试',
+  'error.network.title': '网络连接失败',
+  'error.network.message': '如果问题持续存在，请检查您的网络设置或 VPN 状态',
+  'error.timeout.title': '连接超时',
+  'error.timeout.message': '如果问题持续存在，请检查您的网络设置或 VPN 状态',
+  'error.modelTimeout.title': '模型响应超时',
+  'error.modelTimeout.message': '请重试或切换模型',
+  'error.modelOverload.title': '{model} 当前已满负荷',
+  'error.modelOverload.message': '请暂时切换到其他模型',
+  'error.rateLimit.title': '使用量超过当前模型的频率限制',
+  'error.rateLimit.message': '请稍后再试，或切换到其他模型继续使用',
+  'error.auth.title': '鉴权失败',
+  'error.auth.message': '请检查 API Key 与 Base URL 配置是否正确',
+  'error.auth.action': '打开设置',
+  'error.server.title': '服务暂时不可用',
+  'error.server.message': '服务暂时不可用，请稍后重试，系统正在自动恢复',
+  'error.unknown.title': '出错了',
+  'error.unknown.message': '请重试，或复制错误详情以排查'
 }
 
 const en: Dict = {
@@ -230,7 +251,28 @@ const en: Dict = {
   'toast.copyFailed': 'Copy failed',
   'toast.exported': 'Exported as Markdown',
   'toast.exportCanceled': 'Export canceled',
-  'toast.regenerated': 'Regenerated'
+  'toast.regenerated': 'Regenerated',
+  'error.title': 'Title:',
+  'error.copy': 'Copy error',
+  'error.copied': 'Copied',
+  'error.retry': 'Retry',
+  'error.network.title': 'Connection failed',
+  'error.network.message': 'If the problem persists, check your network settings or VPN status',
+  'error.timeout.title': 'Connection timed out',
+  'error.timeout.message': 'If the problem persists, check your network settings or VPN status',
+  'error.modelTimeout.title': 'Model response timed out',
+  'error.modelTimeout.message': 'Retry or switch to another model',
+  'error.modelOverload.title': '{model} is at full capacity',
+  'error.modelOverload.message': 'Switch to another model for now',
+  'error.rateLimit.title': 'Rate limit exceeded for the current model',
+  'error.rateLimit.message': 'Try again later, or switch to another model',
+  'error.auth.title': 'Authentication failed',
+  'error.auth.message': 'Check whether the API Key and Base URL are correct',
+  'error.auth.action': 'Open settings',
+  'error.server.title': 'Service temporarily unavailable',
+  'error.server.message': 'The service is temporarily unavailable. Please retry later.',
+  'error.unknown.title': 'Something went wrong',
+  'error.unknown.message': 'Retry, or copy the error details to troubleshoot'
 }
 
 const DICTS: Record<Locale, Dict> = { 'zh-CN': zhCN, en }

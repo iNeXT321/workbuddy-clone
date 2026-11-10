@@ -445,3 +445,61 @@
 ---
 
 > 闭环状态（第五轮）：GAP-029 / 030 / 031 **resolved 并复检通过**。**open 清零。**
+
+---
+
+## 第六轮监督（错误处理与可恢复性 · i18n 词典驱动）
+
+> 依据：§5.2 词典 `error.*`（67 条）、`errorBanner.*`（43 条）、`networkCheck.*`（88 条）。事实：原版有**错误分类体系**（网络/超时/模型超时/满负荷/频率限制）+ **错误横幅与动作**（重试、检查网络、切换模型、复制错误、重新输入）。
+
+### GAP-032 · 错误处理无分类（只有裸文本）
+
+- **严重级**：P1（可靠性 / 用户可理解性）
+- **维度**：主进程 + 渲染层
+- **基线依据**：original-baseline.md §5.2 —— `error.network.title`=网络连接失败、`error.timeout.title`=连接超时、`error.modelTimeout.title`=模型响应超时、`error.modelOverload.title`={model} 当前已满负荷、`error.rateLimit.title`=使用量超过当前模型的频率限制
+- **现状**：`streamChat` 抛错后仅把 `err.message` 原样塞进 `m.error` 展示——用户看到 `请求失败 (401): {...}` 或 `fetch failed`，无法判断是配置、网络还是额度问题。
+- **期望**：主进程把错误**分类**（network / timeout / auth / rateLimit / modelOverload / server / unknown）并附带可读标题与建议；渲染层按分类展示标题 + 说明 + 建议动作（重试 / 检查网络 / 打开设置）。
+- **验证方法**：`grep -nE "classifyError|ErrorKind" src/main/llm.ts src/shared/types.ts` 命中；`grep -nE "errorKind|errorHint" src/renderer/src/components/ChatArea.tsx` 命中。
+- **修改文件**：src/shared/types.ts（`ErrorKind` + `ChatMessage.errorKind/errorHint`）、src/main/llm.ts（`classifyError` + 透传分类）、src/main/ipc.ts（错误分片带上分类）、src/renderer/src/stores/useApp.ts（applyChunk 记录分类）、ChatArea.tsx（分类化错误卡片）、i18n（`error.*` 对齐基线）、global.css（`.error-card`）
+- **状态**：resolved
+
+### GAP-033 · 错误消息无「重试」动作
+
+- **严重级**：P1（可靠性）
+- **维度**：渲染层
+- **基线依据**：original-baseline.md §5.2 —— `error.retry`=重试、`errorBanner.action.retry`=重试、`errorBanner.action.editInput`=重新输入、`errorBanner.action.copyError`=复制错误
+- **现状**：出错后只能手动重新输入或点「重新生成」，无直接「重试」入口，也无「复制错误」。
+- **期望**：错误卡片提供「重试」（重新发起上一轮）、「复制错误」（复制完整错误详情）。
+- **验证方法**：`grep -nE "error.retry|error.copy" src/renderer/src/components/ChatArea.tsx` 命中。
+- **修改文件**：src/renderer/src/components/ChatArea.tsx（错误卡片动作按钮）、i18n、global.css
+- **状态**：resolved
+
+---
+
+> 闭环状态（第六轮）：GAP-032 / 033 **resolved 并复检通过**。**open 清零。**
+
+### GAP-034 · 消息落库非幂等（`appendMessage` 抛 UNIQUE 约束）— 监督主动发现
+
+- **严重级**：P1（健壮性 / 数据一致性）
+- **维度**：数据层
+- **基线依据**：非「对齐原版」差异，而是监督复检（运行时冒烟）中主动发现的**复刻自身缺陷**。
+- **现状**：`appendMessage` 用纯 `INSERT`；当同一 `message.id` 重复落库（重试重放、IPC 重入、getConversation 后再次发送）时直接抛 `UNIQUE constraint failed: messages.id`，异常向上冒泡到 `wb:chat:stream` handler，整轮请求被判失败。
+- **期望**：落库幂等——同一 id 覆盖而非抛错（`ON CONFLICT(id) DO UPDATE`）。
+- **验证方法**：`grep -nE "ON CONFLICT\\(id\\) DO UPDATE" src/main/store.ts` 命中；运行时冒烟不再出现 UNIQUE 报错。
+- **修改文件**：src/main/store.ts（`appendMessage` 改 upsert）
+- **状态**：resolved
+
+### GAP-035 · 错误态不落库（重开会话后错误与错误分类丢失）— 监督主动发现
+
+- **严重级**：P1（数据一致性）
+- **维度**：数据层 / 对话链路
+- **基线依据**：非对齐差异，复刻自身缺陷。原版错误有独立错误码/时间并可回看（`error.code` / `error.time` / `error.messageId`）。
+- **现状**：`persistAssistant` 在 `assistantContent` 为空时直接 `return`——纯错误（未产出任何 token）的那一轮**完全不落库**。后果：DB 行与 UI 行不一致，「重试」在重开应用后无上下文。
+- **期望**：错误态也落库（content 存错误文本 + 持久化 `error` / `error_kind`），保证 UI 与 DB 一致。
+- **验证方法**：`grep -nE "error_kind" src/main/store.ts` 命中；`getConversation` 能读回 `error` / `errorKind`。
+- **修改文件**：src/main/store.ts（messages 表增 `error` / `error_kind` 列 + 旧库 ALTER + upsert + getConversation 读回）、src/main/ipc.ts（send 记录错误态 + persistAssistant 落库）
+- **状态**：resolved
+
+---
+
+> 闭环状态（第六轮补充）：GAP-034 / 035 **resolved**（监督主动发现的复刻自身缺陷，同类于 GAP-020 的发现方式）。第六轮 **open 清零**。

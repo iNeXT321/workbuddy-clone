@@ -43,7 +43,9 @@ class Store {
         role TEXT NOT NULL,
         content TEXT NOT NULL,
         created_at INTEGER NOT NULL,
-        attachments TEXT
+        attachments TEXT,
+        error TEXT,
+        error_kind TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id);
     `)
@@ -52,6 +54,13 @@ class Store {
     const cols = this.db.prepare('PRAGMA table_info(messages)').all() as Array<{ name: string }>
     if (!cols.some((c) => c.name === 'attachments')) {
       this.db.exec('ALTER TABLE messages ADD COLUMN attachments TEXT')
+    }
+    // 兼容旧库：messages 表补 error / error_kind 列（错误态持久化）
+    if (!cols.some((c) => c.name === 'error')) {
+      this.db.exec('ALTER TABLE messages ADD COLUMN error TEXT')
+    }
+    if (!cols.some((c) => c.name === 'error_kind')) {
+      this.db.exec('ALTER TABLE messages ADD COLUMN error_kind TEXT')
     }
 
     // 兼容旧库：conversations 表补 pinned / archived 列（对齐原版置顶 / 归档）
@@ -190,7 +199,15 @@ class Store {
     if (!row) return null
     const msgs = this.db
       .prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY rowid ASC')
-      .all(id) as Array<{ id: string; role: string; content: string; created_at: number; attachments: string | null }>
+      .all(id) as Array<{
+      id: string
+      role: string
+      content: string
+      created_at: number
+      attachments: string | null
+      error: string | null
+      error_kind: string | null
+    }>
     return {
       id: row.id,
       title: row.title,
@@ -203,15 +220,25 @@ class Store {
         role: m.role as ChatMessage['role'],
         content: m.content,
         createdAt: m.created_at,
-        attachments: m.attachments ? (JSON.parse(m.attachments) as ChatMessage['attachments']) : undefined
+        attachments: m.attachments ? (JSON.parse(m.attachments) as ChatMessage['attachments']) : undefined,
+        error: m.error ?? undefined,
+        errorKind: (m.error_kind as ChatMessage['errorKind']) ?? undefined
       }))
     }
   }
 
   appendMessage(conversationId: string, msg: ChatMessage): void {
+    // 幂等写入：同一消息 id 重复落库（重试/重放）时覆盖而非抛 UNIQUE 约束错误
     this.db
       .prepare(
-        'INSERT INTO messages (id, conversation_id, role, content, created_at, attachments) VALUES (?, ?, ?, ?, ?, ?)'
+        `INSERT INTO messages (id, conversation_id, role, content, created_at, attachments, error, error_kind)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           content = excluded.content,
+           created_at = excluded.created_at,
+           attachments = excluded.attachments,
+           error = excluded.error,
+           error_kind = excluded.error_kind`
       )
       .run(
         msg.id,
@@ -219,7 +246,9 @@ class Store {
         msg.role,
         msg.content,
         msg.createdAt,
-        msg.attachments && msg.attachments.length ? JSON.stringify(msg.attachments) : null
+        msg.attachments && msg.attachments.length ? JSON.stringify(msg.attachments) : null,
+        msg.error ?? null,
+        msg.errorKind ?? null
       )
     this.db
       .prepare('UPDATE conversations SET updated_at = ? WHERE id = ?')

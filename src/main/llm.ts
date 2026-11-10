@@ -1,9 +1,49 @@
-import type { AppSettings, StreamChunk, StreamRequest, WorkMode } from '../shared/types'
+import type { AppSettings, StreamChunk, StreamRequest, WorkMode, ErrorKind } from '../shared/types'
 
 /**
  * OpenAI 兼容的流式客户端 —— 对齐 WorkBuddy 主进程发 LLM 请求的模式：
  * 请求在主进程发起（不经过渲染层，key 不暴露给渲染层），SSE 增量经 IPC 推送给渲染层。
  */
+
+// 错误分类 —— 对齐原版 error.* / errorBanner.* 的分类维度
+export interface ClassifiedError {
+  kind: ErrorKind
+  message: string
+  hint: string
+}
+
+// 按错误特征归类（HTTP 状态码 + 网络异常 + 关键词）
+export function classifyError(err: unknown): ClassifiedError {
+  const raw = err instanceof Error ? err.message : String(err)
+  const lower = raw.toLowerCase()
+
+  // 网络层异常（fetch 失败 / DNS / 连接拒绝）
+  if (
+    lower.includes('fetch failed') ||
+    lower.includes('econnrefused') ||
+    lower.includes('enotfound') ||
+    lower.includes('network') ||
+    lower.includes('socket hang up')
+  ) {
+    return { kind: 'network', message: raw, hint: 'network' }
+  }
+  // 超时
+  if (lower.includes('timeout') || lower.includes('etimedout') || lower.includes('aborted')) {
+    return { kind: 'timeout', message: raw, hint: 'timeout' }
+  }
+
+  // 解析 HTTP 状态码（形如「请求失败 (401): ...」）
+  const m = raw.match(/\((\d{3})\)/)
+  const status = m ? Number(m[1]) : 0
+  if (status === 401 || status === 403) return { kind: 'auth', message: raw, hint: 'auth' }
+  if (status === 429) return { kind: 'rateLimit', message: raw, hint: 'rateLimit' }
+  if (status === 503 || lower.includes('overload') || lower.includes('capacity')) {
+    return { kind: 'modelOverload', message: raw, hint: 'modelOverload' }
+  }
+  if (status >= 500) return { kind: 'server', message: raw, hint: 'server' }
+  if (status >= 400) return { kind: 'unknown', message: raw, hint: 'unknown' }
+  return { kind: 'unknown', message: raw, hint: 'unknown' }
+}
 
 // 工作模式对应的系统提示 —— 文案对齐原版 input.wbAdd.mode.description.*
 const MODE_SYSTEM_PROMPT: Record<WorkMode, string> = {
