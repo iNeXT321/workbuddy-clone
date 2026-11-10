@@ -5,12 +5,14 @@ import type {
   StopReason,
   ApprovalRequest,
   ApprovalDecision,
-  UserQuestion
+  UserQuestion,
+  SessionSeparator
 } from '../../../shared/types'
 import { lookupErrorCode } from '../../../shared/errorCodes'
 import Markdown from './Markdown'
 import ApprovalCard from './ApprovalCard'
 import QuestionCard from './QuestionCard'
+import { SeparatorRow } from './SelectionChip'
 import { toast } from '../stores/useToast'
 import { useTranslation } from '../i18n'
 
@@ -46,6 +48,8 @@ interface Props {
   onOpenSettings: () => void
   // 递增信号：全局快捷键（Cmd+F）触发打开对话内搜索
   openSearchSignal?: number
+  // 上下文档位列表（对齐 chat.sessionSeparator.*）
+  separators?: SessionSeparator[]
 }
 
 export default function ChatArea({
@@ -65,7 +69,8 @@ export default function ChatArea({
   onRetry,
   onContinue,
   onOpenSettings,
-  openSearchSignal
+  openSearchSignal,
+  separators
 }: Props) {
   const { t } = useTranslation()
   const endRef = useRef<HTMLDivElement>(null)
@@ -227,15 +232,29 @@ export default function ChatArea({
           <h2>{t('chat.welcome')}</h2>
           <p>{t('chat.welcomeHint')}</p>
           <p className="welcome-disclaimer">{t('common.aiDisclaimer')}</p>
+          {(separators ?? []).map((s) => (
+            <SeparatorRow key={s.id} sep={s} onOpenSettings={onOpenSettings} />
+          ))}
         </div>
       )}
-      {messages.map((m) => (
-        <div
-          key={m.id}
-          id={`msg-${m.id}`}
-          className={`message-row ${m.role} ${activeHitId === m.id ? 'msg-hit' : ''}`}
-        >
-          <div className="message-bubble">
+      {messages.map((m, mi) => {
+        // 上下文档位（对齐 chat.sessionSeparator.*）：在跨过分界点的那条消息前插入分隔
+        const prevTs = mi > 0 ? messages[mi - 1].createdAt : 0
+        const crossed = (separators ?? []).filter((s) => s.createdAt > prevTs && s.createdAt <= m.createdAt)
+        // 档位晚于最后一条消息时（刚点「新会话」尚无新消息），挂在末尾，
+        // 保证分隔条立即可见（对齐原版行为）
+        const isLast = mi === messages.length - 1
+        const trailing = isLast ? (separators ?? []).filter((s) => s.createdAt > m.createdAt) : []
+        return (
+          <div key={m.id}>
+            {crossed.map((s) => (
+              <SeparatorRow key={s.id} sep={s} onOpenSettings={onOpenSettings} />
+            ))}
+            <div
+              id={`msg-${m.id}`}
+              className={`message-row ${m.role} ${activeHitId === m.id ? 'msg-hit' : ''}`}
+            >
+              <div className="message-bubble">
             {editingId === m.id ? (
               <div className="message-edit">
                 <textarea
@@ -360,7 +379,12 @@ export default function ChatArea({
             </div>
           )}
         </div>
-      ))}
+            {trailing.map((s) => (
+              <SeparatorRow key={s.id} sep={s} onOpenSettings={onOpenSettings} />
+            ))}
+          </div>
+        )
+      })}
       {/* 本轮工具执行结果（对齐原版工具卡片） */}
       {toolResults && toolResults.length > 0 && (
         <div className="tool-results">

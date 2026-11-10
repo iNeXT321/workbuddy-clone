@@ -126,6 +126,8 @@ export interface ChatMessage {
   pendingQuestion?: UserQuestion
   // 用户消息携带的图片附件
   attachments?: Attachment[]
+  // 用户消息携带的文档选区（对齐 chat.documentSelection.*）
+  selection?: DocumentSelection
 }
 
 export interface Conversation {
@@ -138,6 +140,8 @@ export interface Conversation {
   // 归档（对齐原版「归档或删除」语义）
   archived?: boolean
   messages: ChatMessage[]
+  // 上下文档位（对齐 chat.sessionSeparator.*）
+  separators?: SessionSeparator[]
 }
 
 export interface ModelInfo {
@@ -147,6 +151,52 @@ export interface ModelInfo {
 
 // 工作模式 —— 对齐原版 input.wbAdd.mode.*：默认(craft) / 计划(plan) / 仅问答(ask)
 export type WorkMode = 'default' | 'plan' | 'ask'
+
+// 工作空间 —— 对齐原版 taskStarter.*：任务在其目录下读写文件
+export interface Workspace {
+  name: string
+  path: string
+  createdAt: number
+}
+
+// 模型能力（对齐原版 model.* 的模型族与能力门控）
+export interface ModelCapability {
+  id: string
+  label: string
+  description?: string
+  vision: boolean
+  gif: boolean
+  tools: boolean
+}
+
+// 文档选区 —— 对齐原版 chat.documentSelection.*
+// （documentLabel=文档选区 / spreadsheetLabel=表格选区 / presentationLabel=幻灯片选区 /
+//   localDocument=本地文档 / onlineDocument=腾讯文档 / dismiss=忽略此选区）
+export type SelectionKind = 'document' | 'spreadsheet' | 'presentation' | 'unknown'
+export type SelectionSource = 'local' | 'online'
+
+export interface DocumentSelection {
+  id: string
+  kind: SelectionKind
+  source: SelectionSource
+  // 文件名 / 文档名
+  name: string
+  // 选中的文本内容（表格为区域文本，幻灯片为文本框内容）
+  text: string
+  // 附加定位信息（如「Sheet1!A1:C10」「第 3 张幻灯片」）
+  locator?: string
+}
+
+// 上下文档位 —— 对齐原版 chat.sessionSeparator.*（会话分隔与上下文边界）
+export interface SessionSeparator {
+  id: string
+  // 该分界点之前/之后的时间戳（用于渲染「新的会话」分隔）
+  createdAt: number
+  // 设置项快照（模型 / 模式 / 权限），对齐 sessionSeparator.settingsTooltip
+  model: string
+  mode: WorkMode
+  permission: PermissionLevel
+}
 
 export interface AppSettings {
   baseUrl: string
@@ -163,6 +213,10 @@ export interface AppSettings {
   fullAccessAcknowledged: boolean
   // 发送/换行快捷键可配置（对齐 chat.input.sendShortcutTooltip）
   sendShortcut: 'Enter' | 'Mod+Enter'
+  // 默认工作空间路径（对齐 taskStarter.workspacePathHint.*）
+  workspacePath: string
+  // 上下文档位提醒（对齐 chat.clearSession.idleTimeoutToast「可以通过设置新开会话的时间阈值来节省积分消耗」）
+  newSessionThresholdMinutes: number
 }
 
 export interface StreamRequest {
@@ -260,6 +314,12 @@ export const IPC = {
   answerQuestion: 'wb:question:answer',
   // 会话数量上限查询（对齐 conversation.maxSessions.*）
   conversationLimit: 'wb:conversation:limit',
+  // 工作空间（对齐 taskStarter.*）
+  workspaceList: 'wb:workspace:list',
+  workspaceCreate: 'wb:workspace:create',
+  workspaceValidate: 'wb:workspace:validate',
+  // 上下文档位（对齐 chat.sessionSeparator.*）
+  newSession: 'wb:conversation:new-session',
   // 内置终端
   termOpen: 'wb:terminal:open',
   termWrite: 'wb:terminal:write',

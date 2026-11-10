@@ -219,6 +219,56 @@ MediaPreviewContext     Icons
 - **免责声明（事实）—— `common.aiDisclaimer`**=`内容由 AI 生成，请核实重要信息`；`common.loading`=加载中...、`common.initializing`=正在初始化...
 - **错误详情面板（事实）**：`error.code`=错误码：、`error.time`=时间：、`error.messageId`=消息 ID：、`error.original`=原始错误：→ 错误卡片应展示**结构化错误码**（`errorCode.*` 的标题 + `desc`）而非仅分类文案。
 
+### 5.5 第六次补证：消息流健壮性 + 工作空间 + 模型能力（第九轮监督依据）
+
+**I. 消息流健壮性（事实）—— `chat.*` 补充**
+
+- **发送竞态（事实）—— `chat.sessionBusyRetryLater`**=`当前回复还没结束，请稍后再发送` → 同一会话**不允许多路并发发送**，主进程必须显式拒绝并回执，而非排队或覆盖。
+- **停止失败（事实）—— `chat.cancelFailedRetry`**=`停止任务失败，请稍后重试。` → `chatAbort` 是**可失败操作**，需返回结果结构供渲染层给出重试提示（此前实现固定返回 `true`，是缺口）。
+- **提问回执失败分因（事实）—— `chat.answerQuestion*` 三态**：
+  - `answerQuestionFailed`=`发送回答失败`（一般失败）
+  - `answerQuestionSessionMismatch`=`会话已切换，请重新操作`（挂起提问属于另一个会话）
+  - `answerQuestionNotFound`=`问卷已过期或已被处理，请等待新的问卷`（该会话当前无挂起提问）
+  → 回执接口必须区分**「无挂起」与「挂起不匹配」**两种失败，禁止用单一 `false` 糊合。
+- **模型能力门控（事实）—— 三条互不重叠的提示**：
+  - `chat.imageNotSupported`=`当前模型暂不支持图片，请切换模型后重试`
+  - `chat.gifNotSupported`=`当前模型不支持 GIF，请切换至 kimi 或 minimax 模型后重试` → 文案**点名 kimi / minimax**，说明这是「建议动作」而非泛化提示，实现侧的建议模型必须与文案一致。
+  - `chat.modelUnavailableSwitchModel`=`当前模型不可用，请切换模型`
+  → 附件与模型能力必须**在发送前校验**，不满足时明确提示而非静默失败。
+- **输入占位分态（事实）—— `chat.input.placeholder.*`**：`workbuddy`=`今天帮你做些什么？@ 添加上下文，/调用技能与指令`；`quickQa`=`快速问答模式不消耗积分，可解答简单问题但不支持复杂任务` → 占位文案随**工作模式**变化（ask 模式走 quickQa）。
+- **快捷键提示（事实）**：`sendShortcutTooltip`=`{sendShortcut} 发送，{newlineShortcut} 换行`、`insertQueueShortcutTooltip`=`{sendShortcut} 发送，{insertQueueShortcut} 插入队列`、另有 `sendOnly` / `newlineOnly` / `fallback` 三个降级变体 → 提示文案按当前绑定组合**动态拼装**，单键绑定时降级。
+- **文档选区（事实）—— `chat.documentSelection.*`**：按类型分 `documentLabel`=文档选区 / `spreadsheetLabel`=表格选区 / `presentationLabel`=幻灯片选区；按来源分 `localDocument`=本地文档 / `onlineDocument`=腾讯文档；`dismiss`=忽略此选区 → 输入区可挂载**来自办公文档的选区上下文**，需以 chip 呈现并可单独移除。
+- **切换文件确认（事实）—— `chat.docTabSwitch.dialog.*`**：`title`=确认切换文件、`content`=`对话框有文档选区。如果切换查看新文件，当前选区将被清空。是否确认切换？` → 存在选区时切换会话/文件需**二次确认**。
+- **上下文档位（事实）—— `chat.sessionSeparator.*`**：`settingsTooltip`=`点击可跳转至{name}设置页`、`settingsLink`=`⚙ 设置` → 会话内存在**上下文边界分隔**，分隔行可跳转设置页。
+- **上下文节流提示（事实）—— `chat.clearSession.*`**：`toast`=已清空上下文，开启新对话、`settings`=设置、`idleTimeoutToast`=`💡 可以通过设置新开会话的时间阈值来节省积分消耗，并提升响应速度` → 「开新会话」有**时间阈值**概念，超时后提示节约积分。
+- **搜索与编辑态（事实）**：`chat.search.*` 五条（placeholder/previous/next/close/noMatch）、`chat.loadingTips.dismiss`=不再显示、`chat.pendingEditConfirm.ideaCount`=`{count}个修改想法` + `send`=发送、`chat.send.licenseUnavailableTooltip`=企业 License 已过期或欠费，请联系管理员续费。
+
+**J. 工作空间（事实）—— `taskStarter.*`（33 条）**
+
+- **入口与标签（事实）**：`startIn`=`任务启动于：`、`selectWorkspace`/`selectFolder`=`选择工作空间`、`startFromEmpty`=新建工作空间、`openNewDirectory`=打开本地文件夹、`noWorkspace`=不使用工作空间 → 任务有**显式的工作空间归属**，且允许「不使用」。
+- **创建语义（事实）**：`createWorkspaceDesc`=`为工作空间命名，本地将自动创建同名文件夹，命名后不可随意更改` + `createWorkspacePlaceholder`=输入工作空间名称 + `createWorkspace.toast.failed`=新建工作空间失败，请重试 → 创建是**真实 mkdir**，且名称不可随意更改。
+- **校验与空态（事实）**：`workspaceNotExist`=所选工作空间不存在，请重新选择、`noWorkspaceFound`=未找到工作空间、`noData`=暂无数据 → 选择前需校验目录存在性。
+- **存储路径提示（事实）**：`workspacePathHint.ariaLabel`=查看默认工作空间存储路径设置、`prefix`=可前往、`settingsLink`=「系统设置」、`suffix`=设置默认工作空间存储路径 → 默认存储路径是**系统设置项**。
+- **代码库工作空间（事实，超出本轮范围）**：`addRepo`/`selectRepo`/`searchRepo`/`noRepos`/`loadingRepos`/`addConnectorAuth`/`githubAddRepoAuth`/`githubNoRepos`/`noConnectorHint`/`switchPlatform`/`selectBranch`/`loadingBranches`/`noBranches`/`searchBranch` → 工作空间可来源于 Git 仓库，属独立能力域，本轮不实现。
+- **其他（事实）**：`clawWorkspaceDisabled`=Claw 工作空间不支持选择、`selectDirectory`=选择目录。
+
+**K. 模型（事实）—— `model.*`（26 条）**
+
+- **模型族（事实）**：`claudeSonnet4`=Claude Sonnet 4（`description`=平衡性能与成本的选择）、`claude35Sonnet`=Claude 3.5 Sonnet（`description`=快速响应，适合日常任务）、`gpt4o`=GPT-4o（`description`=OpenAI 多模态模型）、`defaultGLM47`=`GLM-4.7 大模型，能力均衡，适合日常使用`、`defaultGLM46`=`具有强大推理能力的先进语言模型` → 模型描述文案是**能力声明**，是「模型能力门控」的权威依据。
+- **分组（事实）**：`builtIn`=内置模型、`custom`=自定义模型、`enterprise`=企业模型、`group.internal`=内部模型、`group.external`=外部模型、`chinaMobile.groupLabel`=中国移动模型。
+- **切换语义（事实）**：`switchNotice`=`模型已从 {from} 更改为 {to}`、`switchNotice.tooltip`=`在对话中途切换模型会使上下文缓存失效，积分消耗增加，背景信息可能会自动压缩，降低性能表现` → 会话中途切模型有**明确代价提示**。
+- **风险提示（事实）**：`relayRisk.warning`=`你正在使用非官方渠道的模型服务，可能存在数据外泄、积分消耗异常的风险，请确认来源可信后再使用。`
+- **档位（事实）**：`system.auto`=自动、`system.balanced`=均衡、`system.fast`=快速、`system.primary`=优选、`system.ultimate`=极致、`tier.upgrade`=去升级、`promotion.useNow`=去使用、`chinaMobile.trailing.checkUsage`=查询用量、`chinaMobile.trailing.recharge`=充值。
+
+**L. 闲置能力提示（事实）—— `idleCapability.*`（35 条）**
+
+- **触发语义（事实）**：`title`=`{count} 项技能、插件或 MCP 已至少 {days} 天未使用，建议检查后关闭。` → 存在**闲置检测 + 建议关闭**的治理卡片。
+- **上下文成本说明（事实）**：`subtitle`=`已启用的技能、插件和 MCP 会向模型提供说明并占用上下文。关闭近期不用的项目可减少上下文占用，随时可在对应管理页重新开启。`
+- **批量操作（事实）**：`disableAll`=一键关闭、`disable`=关闭、`disabling`=正在关闭…、`disabledToast`=`已关闭 {count} 项技能、插件或 MCP，可随时在对应管理页重新开启。`、`selectAll`/`deselectAll`、`selectedCount`=`已选中 {count} 个`、`neverRemind`=不再提醒。
+- **列表列与时间（事实）**：`columnTypeAndName`=类型和名称、`columnLastUsed`=上次使用时间、`lastUsed`=`上次使用：{date}`、`neverUsed`=从未使用、`relative.today`=今天 / `daysAgo` / `monthsAgo` / `yearsAgo`。
+- **类型标签（事实）**：`typeLabel.skill`=Skill、`typeLabel.connector`=Connect、`typeLabel.mcp`=MCP、`typeLabel.subagent`=Agent、`typeLabel.mixed`=能力。
+- **其他（事实）**：`viewDetail`=查看详情、`collapseDetail`=收起详情、`manageLink`=管理页、`ariaLabel`=闲置技能、插件和 MCP 提示卡片、`closeAriaLabel`=关闭。
+
 ## 6. 本基线文件的边界与限制
 
 - 本基线基于**静态产物清单 + 少量入口源码**，未完整反编译 300+ 模块。

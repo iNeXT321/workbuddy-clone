@@ -16,8 +16,12 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [showTerminal, setShowTerminal] = useState(false)
   const [showPermission, setShowPermission] = useState(false)
+  // 当前任务的工作空间（对齐 taskStarter.*；null = 不使用工作空间）
+  const [workspacePath, setWorkspacePath] = useState<string | null>(null)
   // 对话内搜索由快捷键触发
   const [searchSignal, setSearchSignal] = useState(0)
+  // 切换文件确认弹窗（对齐 chat.docTabSwitch.dialog.*）
+  const [pendingTab, setPendingTab] = useState<string | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   // 应用启动时初始化（加载设置 + 会话列表 + 订阅流式事件）
@@ -25,6 +29,21 @@ export default function App() {
     app.init()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // 会话切换：若对话框仍有文档选区，先弹「确认切换文件」（对齐 chat.docTabSwitch.dialog.*）
+  const requestSelect = (id: string) => {
+    if (app.selection && id !== app.currentId) {
+      setPendingTab(id)
+      return
+    }
+    void app.selectConversation(id)
+  }
+
+  const confirmTabSwitch = () => {
+    app.dismissSelection()
+    if (pendingTab) void app.selectConversation(pendingTab)
+    setPendingTab(null)
+  }
 
   // 全局快捷键（对齐原版 settings.keyboardShortcuts.actions.*）
   useEffect(() => {
@@ -72,7 +91,7 @@ export default function App() {
         searchQuery={app.searchQuery}
         showArchived={app.showArchived}
         limitReached={app.conversationLimit.reached}
-        onSelect={app.selectConversation}
+        onSelect={requestSelect}
         onNew={app.newConversation}
         onDelete={app.removeConversation}
         onRename={app.renameConversation}
@@ -88,6 +107,9 @@ export default function App() {
             {app.conversations.find((c) => c.id === app.currentId)?.title || t('sidebar.new')}
           </div>
           <div className="topbar-actions">
+            <button className="icon-btn" onClick={() => void app.startNewSession()} title={t('sessionSeparator.label')}>
+              ✦
+            </button>
             <button className="icon-btn" onClick={app.clearContext} title={t('chat.clearContext')}>
               ⌫
             </button>
@@ -117,6 +139,7 @@ export default function App() {
           onContinue={app.continueTask}
           onOpenSettings={() => setShowSettings(true)}
           openSearchSignal={searchSignal}
+          separators={app.separators}
         />
         <Composer
           streaming={app.streaming}
@@ -125,10 +148,17 @@ export default function App() {
           files={app.messages.flatMap((m) => m.attachments ?? [])}
           permission={app.settings?.permission ?? 'default'}
           sendShortcut={app.settings?.sendShortcut ?? 'Enter'}
+          model={app.settings?.model ?? ''}
+          selection={app.selection}
+          workspacePath={workspacePath}
+          workspaceRoot={app.settings?.workspacePath ?? ''}
+          onWorkspaceChange={setWorkspacePath}
+          onDismissSelection={app.dismissSelection}
           onSend={app.sendMessage}
           onStop={app.stopStreaming}
           onModeChange={app.setMode}
           onOpenPermission={() => setShowPermission(true)}
+          onOpenSettings={() => setShowSettings(true)}
         />
       </main>
       {showTerminal && app.currentId && (
@@ -153,6 +183,22 @@ export default function App() {
             toast.info(t('permission.default'))
           }}
         />
+      )}
+      {pendingTab && (
+        <div className="modal-overlay" onClick={() => setPendingTab(null)}>
+          <div className="modal dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="dialog-title">{t('docTabSwitch.dialog.title')}</div>
+            <div className="dialog-content">{t('docTabSwitch.dialog.content')}</div>
+            <div className="dialog-actions">
+              <button className="btn ghost" onClick={() => setPendingTab(null)}>
+                {t('chat.cancel')}
+              </button>
+              <button className="btn" onClick={confirmTabSwitch}>
+                {t('common.confirm')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       <Toaster />
     </div>

@@ -9,9 +9,12 @@ import type {
   ProgressPhase,
   ApprovalDecision,
   ApprovalRequest,
-  UserQuestion
+  UserQuestion,
+  DocumentSelection,
+  SessionSeparator
 } from '../../../shared/types'
-import { lookupErrorCode } from '../../../shared/errorCodes'
+import { errorCodeForKind } from '../../../shared/errorCodes'
+import { checkAttachmentSupport } from '../../../shared/models'
 import { toast } from './useToast'
 import { useI18nStore, t } from '../i18n'
 
@@ -60,6 +63,10 @@ interface AppState {
   toolResults: ToolResultItem[]
   // 会话数量上限状态（对齐 conversation.maxSessions.*）
   conversationLimit: { reached: boolean; max: number; count: number }
+  // 当前挂起的文档选区（对齐 chat.documentSelection.*）
+  selection: DocumentSelection | null
+  // 本会话的上下文档位列表（对齐 chat.sessionSeparator.*）
+  separators: SessionSeparator[]
 
   init: () => Promise<void>
   selectConversation: (id: string) => Promise<void>
@@ -89,6 +96,11 @@ interface AppState {
   answerQuestion: (answers: string[]) => Promise<void>
   skipQuestion: () => Promise<void>
   saveSettings: (s: AppSettings) => Promise<void>
+  // 设置 / 清除文档选区（对齐 chat.documentSelection.*）
+  setSelection: (sel: DocumentSelection | null) => void
+  dismissSelection: () => void
+  // 开启新的上下文档位（对齐 chat.sessionSeparator.*）
+  startNewSession: () => Promise<void>
 }
 
 const wb = window.workbuddy
@@ -126,12 +138,15 @@ function applyChunkToMessages(messages: ChatMessage[], chunk: StreamChunk): Chat
     }
   } else if (chunk.type === 'error') {
     if (last && last.role === 'assistant' && last.streaming) {
+      // 结构化错误码：优先用主进程下发的 code，缺失时按错误类别回退查表（对齐 errorCode.*）
+      const code = chunk.errorCode ?? errorCodeForKind(chunk.errorKind)
       next[next.length - 1] = {
         ...last,
         streaming: false,
         error: chunk.error,
         errorKind: chunk.errorKind,
         errorHint: chunk.errorHint,
+        errorCode: code,
         content: last.content || chunk.error || ''
       }
     }
@@ -217,6 +232,8 @@ export const useAppStore = create<AppState>()((set, get) => {
     pendingQuestion: null,
     toolResults: [],
     conversationLimit: { reached: false, max: 0, count: 0 },
+    selection: null,
+    separators: [],
 
     init: async () => {
       const s = await wb.getSettings()
@@ -240,7 +257,9 @@ export const useAppStore = create<AppState>()((set, get) => {
         queue: [],
         pendingApproval: null,
         pendingQuestion: null,
-        toolResults: []
+        toolResults: [],
+        selection: null,
+        separators: conv?.separators ?? []
       })
     },
 
@@ -261,7 +280,9 @@ export const useAppStore = create<AppState>()((set, get) => {
         queue: [],
         pendingApproval: null,
         pendingQuestion: null,
-        toolResults: []
+        toolResults: [],
+        selection: null,
+        separators: []
       }))
     },
 
@@ -349,6 +370,15 @@ export const useAppStore = create<AppState>()((set, get) => {
       if (streaming) {
         get().enqueue(text, attachments)
         return
+      }
+
+      // 模型能力门控（对齐 chat.imageNotSupported / chat.gifNotSupported）：不满足时明确提示而非静默失败
+      if (attachments && attachments.length > 0) {
+        const issue = checkAttachmentSupport(settings.model, attachments)
+        if (issue) {
+          toast.error(t(issue.kind === 'gif' ? 'chat.gifNotSupported' : 'chat.imageNotSupported'))
+          return
+        }
       }
 
       const userMsg: ChatMessage = {
@@ -486,7 +516,11 @@ export const useAppStore = create<AppState>()((set, get) => {
 
     stopStreaming: async () => {
       const { currentId } = get()
-      if (currentId) await wb.chatAbort(currentId)
+      if (currentId) {
+        const r = await wb.chatAbort(currentId)
+        // 对齐 chat.cancelFailedRetry「停止任务失败，请稍后重试。」
+        if (!r?.ok) toast.error(t('chat.cancelFailedRetry'))
+      }
       // 主动停止视为放弃后续队列
       set({
         streaming: false,
@@ -511,7 +545,15 @@ export const useAppStore = create<AppState>()((set, get) => {
     answerQuestion: async (answers: string[]) => {
       const { currentId, pendingQuestion } = get()
       if (!currentId || !pendingQuestion) return
-      await wb.answerQuestion(currentId, pendingQuestion.id, answers, false)
+      const r = await wb.answerQuestion(currentId, pendingQuestion.id, answers, false)
+      // 失败分因提示（对齐 chat.answerQuestionFailed / SessionMismatch / NotFound）
+      if (!r?.ok) {
+        if (r?.reason === 'sessionMismatch') toast.error(t('chat.answerQuestionSessionMismatch'))
+        else if (r?.reason === 'notFound') toast.error(t('chat.answerQuestionNotFound'))
+        else toast.error(t('chat.answerQuestionFailed'))
+        set({ pendingQuestion: null })
+        return
+      }
       set({ pendingQuestion: null })
     },
 
@@ -519,9 +561,10 @@ export const useAppStore = create<AppState>()((set, get) => {
     skipQuestion: async () => {
       const { currentId, pendingQuestion } = get()
       if (!currentId || !pendingQuestion) return
-      await wb.answerQuestion(currentId, pendingQuestion.id, [], true)
+      const r = await wb.answerQuestion(currentId, pendingQuestion.id, [], true)
       set({ pendingQuestion: null })
-      toast.info(t('question.skipped'))
+      if (!r?.ok) toast.error(t('chat.answerQuestionFailed'))
+      else toast.info(t('question.skipped'))
     },
 
     saveSettings: async (s: AppSettings) => {
@@ -529,6 +572,39 @@ export const useAppStore = create<AppState>()((set, get) => {
       applyTheme(saved.theme)
       useI18nStore.getState().setLocale(saved.locale)
       set({ settings: saved, mode: saved.mode ?? 'default' })
+    },
+
+    // 设置 / 清除文档选区（对齐 chat.documentSelection.*）
+    setSelection: (sel: DocumentSelection | null) => set({ selection: sel }),
+    dismissSelection: () => set({ selection: null }),
+
+    // 开启新的上下文档位（对齐 chat.sessionSeparator.*）
+    // 记录一条边界，渲染层在其后插入「新的会话」分隔；历史消息保留，但语义上属于上一段上下文
+    startNewSession: async () => {
+      const { currentId, settings, mode } = get()
+      if (!currentId || !settings) return
+      try {
+        const sep = await wb.newSession(currentId, {
+          model: settings.model,
+          mode,
+          permission: settings.permission
+        })
+        set((state) => ({
+          separators: [
+            ...state.separators,
+            {
+              id: sep.id,
+              createdAt: sep.createdAt,
+              model: sep.model,
+              mode: sep.mode as WorkMode,
+              permission: sep.permission as AppSettings['permission']
+            }
+          ]
+        }))
+        toast.success(t('chat.clearSession.toast'))
+      } catch {
+        toast.error(t('chat.cancelFailedRetry'))
+      }
     }
   }
 })

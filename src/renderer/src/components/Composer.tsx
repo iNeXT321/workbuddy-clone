@@ -1,7 +1,10 @@
 import { useRef, useState } from 'react'
-import type { Attachment, WorkMode, PermissionLevel, WbAddGroup } from '../../../shared/types'
+import type { Attachment, WorkMode, PermissionLevel, WbAddGroup, DocumentSelection } from '../../../shared/types'
 import { useTranslation } from '../i18n'
 import { toast } from '../stores/useToast'
+import { checkAttachmentSupport } from '../../../shared/models'
+import { SelectionChip } from './SelectionChip'
+import WorkspacePicker from './WorkspacePicker'
 
 interface Props {
   streaming: boolean
@@ -13,11 +16,21 @@ interface Props {
   permission?: PermissionLevel
   // 发送/换行快捷键（对齐 chat.input.sendShortcutTooltip）
   sendShortcut?: 'Enter' | 'Mod+Enter'
+  // 当前模型（用于能力门控，对齐 chat.imageNotSupported / chat.gifNotSupported）
+  model?: string
+  // 当前文档选区（对齐 chat.documentSelection.*）
+  selection?: DocumentSelection | null
+  // 工作空间（对齐 taskStarter.*）
+  workspacePath?: string | null
+  workspaceRoot?: string
+  onWorkspaceChange?: (path: string | null) => void
+  onDismissSelection?: () => void
   onSend: (text: string, attachments?: Attachment[], slashCommand?: string) => void
   onStop: () => void
   onModeChange: (mode: WorkMode) => void
   // 打开权限确认弹窗（完全访问需二次确认）
   onOpenPermission: () => void
+  onOpenSettings?: () => void
 }
 
 const MAX_IMAGES = 4
@@ -75,10 +88,17 @@ export default function Composer({
   files,
   permission = 'default',
   sendShortcut = 'Enter',
+  model = '',
+  selection = null,
+  workspacePath = null,
+  workspaceRoot = '',
+  onWorkspaceChange,
+  onDismissSelection,
   onSend,
   onStop,
   onModeChange,
-  onOpenPermission
+  onOpenPermission,
+  onOpenSettings
 }: Props) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
@@ -100,6 +120,15 @@ export default function Composer({
   const addFiles = async (files: FileList | File[]) => {
     const images = Array.from(files).filter((f) => f.type.startsWith('image/'))
     if (images.length === 0) return
+    // 模型能力门控（对齐 chat.imageNotSupported / chat.gifNotSupported）
+    const issue = checkAttachmentSupport(
+      model,
+      images.map((f) => ({ mime: f.type, name: f.name }))
+    )
+    if (issue) {
+      toast.error(t(issue.kind === 'gif' ? 'chat.gifNotSupported' : 'chat.imageNotSupported'))
+      return
+    }
     const room = MAX_IMAGES - attachments.length
     if (room <= 0) {
       toast.error(t('composer.maxImages'))
@@ -130,7 +159,14 @@ export default function Composer({
   // 流式中提交 → store 内自动入队；否则直接发送
   const submit = () => {
     const raw = text.trim()
-    if (!raw && attachments.length === 0 && references.length === 0) return
+    if (!raw && attachments.length === 0 && references.length === 0 && !selection) return
+    // 模型能力门控（对齐 chat.imageNotSupported / chat.gifNotSupported）：
+    // 当前模型不支持所选附件类型时，明确提示并引导切换模型，而非静默失败
+    const issue = checkAttachmentSupport(model, [...attachments, ...references])
+    if (issue) {
+      toast.error(t(issue.kind === 'gif' ? 'chat.gifNotSupported' : 'chat.imageNotSupported'))
+      return
+    }
     const { command, body } = parseSlash(raw)
     // 带斜杠指令时：正文为空则用指令名占位，保证有可读内容
     const outText = command ? body.trim() || `/${command}` : raw
@@ -271,9 +307,16 @@ export default function Composer({
         </div>
       )}
 
-      {/* chips 区：模式 / 权限 / 队列（对齐 input.modeChip.* / permission / queue） */}
-      {(mode !== 'default' || modeOpen || queueCount > 0 || permission === 'fullAccess') && (
+      {/* chips 区：模式 / 权限 / 队列 / 工作空间（对齐 input.modeChip.* / permission / queue / taskStarter.*） */}
+      {(mode !== 'default' || modeOpen || queueCount > 0 || permission === 'fullAccess' || onWorkspaceChange) && (
         <div className="composer-chips">
+          {onWorkspaceChange && (
+            <WorkspacePicker
+              workspacePath={workspacePath}
+              onChange={onWorkspaceChange}
+              onOpenSettings={() => onOpenSettings?.()}
+            />
+          )}
           {permission === 'fullAccess' && (
             <span className="chip permission-chip active" title={t('permission.tooltip.fullAccess')}>
               {t('permission.fullAccess')}
@@ -324,6 +367,13 @@ export default function Composer({
         </div>
       )}
 
+      {/* 当前文档选区（对齐 chat.documentSelection.*） */}
+      {selection && (
+        <div className="selection-strip">
+          <SelectionChip sel={selection} onDismiss={() => onDismissSelection?.()} />
+        </div>
+      )}
+
       <textarea
         ref={taRef}
         className="composer-input"
@@ -334,7 +384,7 @@ export default function Composer({
         }}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
-        placeholder={t('composer.placeholder')}
+        placeholder={mode === 'ask' ? t('input.placeholder.quickQa') : t('input.placeholder.workbuddy')}
         rows={3}
       />
 

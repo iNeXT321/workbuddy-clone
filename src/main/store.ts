@@ -2,7 +2,7 @@ import { app, safeStorage } from 'electron'
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
 import { mkdirSync } from 'node:fs'
-import type { AppSettings, Conversation, ChatMessage } from '../shared/types'
+import type { AppSettings, Conversation, ChatMessage, SessionSeparator } from '../shared/types'
 
 /**
  * 本地存储层 —— 对齐 WorkBuddy 本体的 node:sqlite 用法：
@@ -50,6 +50,16 @@ class Store {
         error_code TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id);
+      -- 上下文档位（对齐 chat.sessionSeparator.*）：会话内的上下文边界点
+      CREATE TABLE IF NOT EXISTS separators (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        model TEXT,
+        mode TEXT,
+        permission TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_separators_conv ON separators(conversation_id);
     `)
 
     // 兼容旧库：老版本 messages 表无 attachments 列，补列（ALTER 幂等失败则忽略）
@@ -100,7 +110,11 @@ class Store {
       permission: 'default',
       fullAccessAcknowledged: false,
       // 发送快捷键默认 Enter（对齐 chat.input.sendShortcutTooltip 的默认值）
-      sendShortcut: 'Enter'
+      sendShortcut: 'Enter',
+      // 工作空间默认放在用户主目录下的 WorkBuddy 工作区（对齐 taskStarter.*）
+      workspacePath: join(app.getPath('home'), 'WorkBuddy'),
+      // 新开会话建议阈值：默认 240 分钟（对齐 chat.clearSession.idleTimeoutToast 的节流语义）
+      newSessionThresholdMinutes: 240
     }
     if (!row) return defaults
     try {
@@ -213,6 +227,45 @@ class Store {
     return row.n
   }
 
+  // ---------- 上下文档位（对齐 chat.sessionSeparator.*） ----------
+  // 存「新会话开始」边界：该时间点之后的消息属于新的一段上下文
+  addSeparator(
+    conversationId: string,
+    sep: { id: string; createdAt: number; model: string; mode: string; permission: string }
+  ): void {
+    this.db
+      .prepare(
+        'INSERT INTO separators (id, conversation_id, created_at, model, mode, permission) VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING'
+      )
+      .run(sep.id, conversationId, sep.createdAt, sep.model, sep.mode, sep.permission)
+  }
+
+  listSeparators(conversationId: string): SessionSeparator[] {
+    const rows = this.db
+      .prepare('SELECT * FROM separators WHERE conversation_id = ? ORDER BY created_at ASC')
+      .all(conversationId) as Array<{
+      id: string
+      created_at: number
+      model: string
+      mode: string
+      permission: string
+    }>
+    return rows.map((r) => ({
+      id: r.id,
+      createdAt: r.created_at,
+      model: r.model,
+      mode: r.mode as SessionSeparator['mode'],
+      permission: r.permission as SessionSeparator['permission']
+    }))
+  }
+
+  // 截断消息时同步清理其后的档位（按时间戳判定边界归属）
+  pruneSeparatorsAfter(conversationId: string, timestamp: number): void {
+    this.db
+      .prepare('DELETE FROM separators WHERE conversation_id = ? AND created_at >= ?')
+      .run(conversationId, timestamp)
+  }
+
   getConversation(id: string): Conversation | null {
     const row = this.db.prepare('SELECT * FROM conversations WHERE id = ?').get(id) as
       | { id: string; title: string; created_at: number; updated_at: number; pinned: number; archived: number }
@@ -248,7 +301,9 @@ class Store {
         errorKind: (m.error_kind as ChatMessage['errorKind']) ?? undefined,
         stopReason: (m.stop_reason as ChatMessage['stopReason']) ?? undefined,
         errorCode: m.error_code ?? undefined
-      }))
+      })),
+      // 上下文档位随会话一起返回（对齐 chat.sessionSeparator.*）
+      separators: this.listSeparators(id)
     }
   }
 
@@ -331,6 +386,8 @@ class Store {
 
   deleteConversation(id: string): void {
     this.db.prepare('DELETE FROM messages WHERE conversation_id = ?').run(id)
+    // 级联清空该会话的上下文档位（对齐 chat.sessionSeparator.*，避免悬空记录）
+    this.db.prepare('DELETE FROM separators WHERE conversation_id = ?').run(id)
     this.db.prepare('DELETE FROM conversations WHERE id = ?').run(id)
   }
 

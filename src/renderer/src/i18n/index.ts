@@ -235,6 +235,7 @@ const zhCN: Dict = {
   'common.aiDisclaimer': '内容由 AI 生成，请核实重要信息',
   'common.loading': '加载中...',
   'common.initializing': '正在初始化...',
+  'common.confirm': '确认',
   // 会话上限（对齐 conversation.maxSessions.dialog.*）
   'conversation.limit.title': '会话数量已达上限',
   'conversation.limit.content': '您已达到最大会话数量限制，请先归档或删除一些会话后再创建新会话。',
@@ -250,7 +251,82 @@ const zhCN: Dict = {
   'time.daysAgo': '{count}天前',
   'time.yearsAgo': '{count}年前',
   // 错误码（对齐 errorCode.*）
-  'error.code': '错误码：'
+  'error.code': '错误码：',
+  // ---------- 第九轮：消息流健壮性 + 工作空间 + 模型能力 ----------
+  // 输入区占位（对齐 chat.input.placeholder*）
+  'input.placeholder.workbuddy': '今天帮你做些什么？@ 添加上下文，/调用技能与指令',
+  'input.placeholder.quickQa': '快速问答模式不消耗积分，可解答简单问题但不支持复杂任务',
+  'input.sendShortcutTooltip': '{sendShortcut} 发送，{newlineShortcut} 换行',
+  'input.insertQueueShortcutTooltip': '{sendShortcut} 发送，{insertQueueShortcut} 插入队列',
+  // 会话忙碌与停止失败（对齐 chat.sessionBusyRetryLater / chat.cancelFailedRetry）
+  'chat.sessionBusyRetryLater': '当前回复还没结束，请稍后再发送',
+  'chat.cancelFailedRetry': '停止任务失败，请稍后重试。',
+  // 模型能力门控（对齐 chat.imageNotSupported / chat.gifNotSupported / chat.modelUnavailableSwitchModel）
+  'chat.imageNotSupported': '当前模型暂不支持图片，请切换模型后重试',
+  'chat.gifNotSupported': '当前模型不支持 GIF，请切换至 kimi 或 minimax 模型后重试',
+  'chat.modelUnavailableSwitchModel': '当前模型不可用，请切换模型',
+  // 提问回执失败（对齐 chat.answerQuestion*）
+  'chat.answerQuestionFailed': '发送回答失败',
+  'chat.answerQuestionSessionMismatch': '会话已切换，请重新操作',
+  'chat.answerQuestionNotFound': '问卷已过期或已被处理，请等待新的问卷',
+  // 文档选区（对齐 chat.documentSelection.*）
+  'documentSelection.documentLabel': '文档选区',
+  'documentSelection.spreadsheetLabel': '表格选区',
+  'documentSelection.presentationLabel': '幻灯片选区',
+  'documentSelection.localDocument': '本地文档',
+  'documentSelection.onlineDocument': '腾讯文档',
+  'documentSelection.dismiss': '忽略此选区',
+  // 切换文件确认（对齐 chat.docTabSwitch.dialog.*）
+  'docTabSwitch.dialog.title': '确认切换文件',
+  'docTabSwitch.dialog.content': '对话框有文档选区。如果切换查看新文件，当前选区将被清空。是否确认切换？',
+  // 上下文档位（对齐 chat.sessionSeparator.*）
+  'sessionSeparator.settingsTooltip': '点击可跳转至{name}设置页',
+  'sessionSeparator.settingsLink': '⚙ 设置',
+  'sessionSeparator.label': '新的会话',
+  // 上下文节流提示（对齐 chat.clearSession.*）
+  'clearSession.idleTimeoutToast': '💡 可以通过设置新开会话的时间阈值来节省积分消耗，并提升响应速度',
+  'clearSession.settings': '设置',
+  // 模型（对齐 model.*）
+  'model.builtIn': '内置模型',
+  'model.custom': '自定义模型',
+  'model.group.internal': '内部模型',
+  'model.group.external': '外部模型',
+  'model.enterprise': '企业模型',
+  'model.claudeSonnet4': 'Claude Sonnet 4',
+  'model.claudeSonnet4.description': '平衡性能与成本的选择',
+  'model.claude35Sonnet': 'Claude 3.5 Sonnet',
+  'model.claude35Sonnet.description': '快速响应，适合日常任务',
+  'model.gpt4o': 'GPT-4o',
+  'model.gpt4o.description': 'OpenAI 多模态模型',
+  'model.defaultGLM47': 'GLM-4.7 大模型，能力均衡，适合日常使用',
+  'model.defaultGLM46': '具有强大推理能力的先进语言模型',
+  'model.switchNotice': '模型已从 {from} 更改为 {to}',
+  'model.switchNotice.tooltip': '在对话中途切换模型会使上下文缓存失效，积分消耗增加，背景信息可能会自动压缩，降低性能表现',
+  'model.relayRisk.warning': '你正在使用非官方渠道的模型服务，可能存在数据外泄、积分消耗异常的风险，请确认来源可信后再使用。',
+  'model.chinaMobile.groupLabel': '中国移动模型',
+  'model.chinaMobile.trailing.checkUsage': '查询用量',
+  'model.chinaMobile.trailing.recharge': '充值',
+  'model.promotion.useNow': '去使用',
+  'model.tier.upgrade': '去升级',
+  // 工作空间（对齐 taskStarter.*）
+  'taskStarter.startIn': '任务启动于：',
+  'taskStarter.selectWorkspace': '选择工作空间',
+  'taskStarter.selectFolder': '选择工作空间',
+  'taskStarter.startFromEmpty': '新建工作空间',
+  'taskStarter.openNewDirectory': '打开本地文件夹',
+  'taskStarter.noWorkspace': '不使用工作空间',
+  'taskStarter.noWorkspaceFound': '未找到工作空间',
+  'taskStarter.searchWorkspace': '搜索工作空间',
+  'taskStarter.workspaceNotExist': '所选工作空间不存在，请重新选择',
+  'taskStarter.createWorkspaceDesc': '为工作空间命名，本地将自动创建同名文件夹，命名后不可随意更改',
+  'taskStarter.createWorkspacePlaceholder': '输入工作空间名称',
+  'taskStarter.createWorkspace.toast.failed': '新建工作空间失败，请重试',
+  'taskStarter.workspacePathHint.ariaLabel': '查看默认工作空间存储路径设置',
+  'taskStarter.workspacePathHint.prefix': '可前往',
+  'taskStarter.workspacePathHint.settingsLink': '「系统设置」',
+  'taskStarter.workspacePathHint.suffix': '设置默认工作空间存储路径',
+  'taskStarter.selectDirectory': '选择目录',
+  'taskStarter.noData': '暂无数据'
 }
 
 const en: Dict = {
@@ -473,6 +549,7 @@ const en: Dict = {
   'common.aiDisclaimer': 'AI-generated content. Verify important information.',
   'common.loading': 'Loading...',
   'common.initializing': 'Initializing...',
+  'common.confirm': 'Confirm',
   // Conversation limit (aligned with conversation.maxSessions.dialog.*)
   'conversation.limit.title': 'Conversation limit reached',
   'conversation.limit.content': 'You have reached the maximum number of conversations. Archive or delete some before creating a new one.',
@@ -488,9 +565,80 @@ const en: Dict = {
   'time.daysAgo': '{count}d ago',
   'time.yearsAgo': '{count}y ago',
   // Error code (aligned with errorCode.*)
-  'error.code': 'Error code: '
+  'error.code': 'Error code: ',
+  // ---------- Round 9: message-flow robustness + workspace + model capability ----------
+  'input.placeholder.workbuddy': 'What can I do for you today? @ to add context, / for skills and commands',
+  'input.placeholder.quickQa': 'Quick Q&A mode costs no credits; good for simple questions but not complex tasks',
+  'input.sendShortcutTooltip': '{sendShortcut} to send, {newlineShortcut} for a new line',
+  'input.insertQueueShortcutTooltip': '{sendShortcut} to send, {insertQueueShortcut} to insert into queue',
+  'chat.sessionBusyRetryLater': 'The current reply has not finished, please try again later',
+  'chat.cancelFailedRetry': 'Failed to stop the task, please try again later.',
+  'chat.imageNotSupported': 'The current model does not support images, please switch models and retry',
+  'chat.gifNotSupported': 'The current model does not support GIF, please switch to kimi or minimax and retry',
+  'chat.modelUnavailableSwitchModel': 'The current model is unavailable, please switch models',
+  'chat.answerQuestionFailed': 'Failed to send the answer',
+  'chat.answerQuestionSessionMismatch': 'The conversation has changed, please try again',
+  'chat.answerQuestionNotFound': 'This question has expired or was already handled, please wait for a new one',
+  'documentSelection.documentLabel': 'Document selection',
+  'documentSelection.spreadsheetLabel': 'Spreadsheet selection',
+  'documentSelection.presentationLabel': 'Slide selection',
+  'documentSelection.localDocument': 'Local document',
+  'documentSelection.onlineDocument': 'Tencent Docs',
+  'documentSelection.dismiss': 'Dismiss this selection',
+  'docTabSwitch.dialog.title': 'Confirm switching file',
+  'docTabSwitch.dialog.content':
+    'The composer has a document selection. Switching to view a new file will clear the current selection. Continue?',
+  'sessionSeparator.settingsTooltip': 'Click to jump to {name} settings',
+  'sessionSeparator.settingsLink': '⚙ Settings',
+  'sessionSeparator.label': 'New session',
+  'clearSession.idleTimeoutToast':
+    '💡 Set a new-session time threshold to save credits and improve response speed',
+  'clearSession.settings': 'Settings',
+  'model.builtIn': 'Built-in models',
+  'model.custom': 'Custom model',
+  'model.group.internal': 'Internal models',
+  'model.group.external': 'External models',
+  'model.enterprise': 'Enterprise models',
+  'model.claudeSonnet4': 'Claude Sonnet 4',
+  'model.claudeSonnet4.description': 'A balanced choice of performance and cost',
+  'model.claude35Sonnet': 'Claude 3.5 Sonnet',
+  'model.claude35Sonnet.description': 'Fast responses, great for everyday tasks',
+  'model.gpt4o': 'GPT-4o',
+  'model.gpt4o.description': 'OpenAI multimodal model',
+  'model.defaultGLM47': 'GLM-4.7, balanced capabilities for everyday use',
+  'model.defaultGLM46': 'An advanced language model with strong reasoning',
+  'model.switchNotice': 'Model changed from {from} to {to}',
+  'model.switchNotice.tooltip':
+    'Switching models mid-conversation invalidates the context cache, increases credit usage, may auto-compress background info, and reduces performance',
+  'model.relayRisk.warning':
+    'You are using a non-official model relay. Data leakage or abnormal credit usage may occur; confirm the source is trustworthy before use.',
+  'model.chinaMobile.groupLabel': 'China Mobile models',
+  'model.chinaMobile.trailing.checkUsage': 'Check usage',
+  'model.chinaMobile.trailing.recharge': 'Recharge',
+  'model.promotion.useNow': 'Use now',
+  'model.tier.upgrade': 'Upgrade',
+  'taskStarter.startIn': 'Task starts in:',
+  'taskStarter.selectWorkspace': 'Select workspace',
+  'taskStarter.selectFolder': 'Select workspace',
+  'taskStarter.startFromEmpty': 'New workspace',
+  'taskStarter.openNewDirectory': 'Open local folder',
+  'taskStarter.noWorkspace': 'No workspace',
+  'taskStarter.noWorkspaceFound': 'No workspace found',
+  'taskStarter.searchWorkspace': 'Search workspaces',
+  'taskStarter.workspaceNotExist': 'The selected workspace no longer exists, please choose again',
+  'taskStarter.createWorkspaceDesc':
+    'Name the workspace; a folder with the same name will be created locally and cannot be renamed easily',
+  'taskStarter.createWorkspacePlaceholder': 'Enter a workspace name',
+  'taskStarter.createWorkspace.toast.failed': 'Failed to create the workspace, please retry',
+  'taskStarter.workspacePathHint.ariaLabel': 'View the default workspace storage path setting',
+  'taskStarter.workspacePathHint.prefix': 'Go to',
+  'taskStarter.workspacePathHint.settingsLink': 'System Settings',
+  'taskStarter.workspacePathHint.suffix': 'to set the default workspace storage path',
+  'taskStarter.selectDirectory': 'Select directory',
+  'taskStarter.noData': 'No data'
 }
 
+// 语言包总表（原版同款：按 locale 拆分的扁平字典）
 const DICTS: Record<Locale, Dict> = { 'zh-CN': zhCN, en }
 
 interface I18nState {

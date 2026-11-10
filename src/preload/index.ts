@@ -6,7 +6,9 @@ import type {
   StreamRequest,
   StreamChunk,
   ApprovalDecision,
-  ConversationLimit
+  ConversationLimit,
+  WorkMode,
+  PermissionLevel
 } from '../shared/types'
 
 /**
@@ -34,7 +36,7 @@ export interface WorkbuddyBridge {
   truncateFrom(conversationId: string, fromMessageId: string): Promise<boolean>
 
   chatStream(req: StreamRequest): Promise<boolean>
-  chatAbort(conversationId: string): Promise<boolean>
+  chatAbort(conversationId: string): Promise<{ ok: boolean; reason?: string }>
 
   // 工具审批（对齐 tool.approval.*）与向用户提问（对齐 tool.askUserQuestion.*）
   approvalDecide(conversationId: string, decision: ApprovalDecision, approvalId?: string): Promise<boolean>
@@ -43,10 +45,21 @@ export interface WorkbuddyBridge {
     questionId: string,
     answers: string[],
     skipped?: boolean
-  ): Promise<boolean>
+  ): Promise<{ ok: boolean; reason?: string }>
 
   // 会话数量上限（对齐 conversation.maxSessions.*）
   conversationLimit(): Promise<ConversationLimit & { count: number }>
+
+  // 工作空间（对齐 taskStarter.*）
+  workspaceList(): Promise<{ root: string; items: Array<{ name: string; path: string; mtime: number }> }>
+  workspaceCreate(name: string): Promise<{ ok: boolean; path?: string; reason?: string; root: string }>
+  workspaceValidate(path: string): Promise<boolean>
+
+  // 上下文档位（对齐 chat.sessionSeparator.*）
+  newSession(
+    conversationId: string,
+    meta: { model: string; mode: WorkMode; permission: PermissionLevel }
+  ): Promise<{ id: string; createdAt: number; model: string; mode: string; permission: string }>
 
   // 内置终端
   termOpen(conversationId: string): Promise<{ ok: boolean; shell?: string }>
@@ -92,6 +105,11 @@ const bridge: WorkbuddyBridge = {
   answerQuestion: (conversationId, questionId, answers, skipped) =>
     ipcRenderer.invoke(IPC.answerQuestion, conversationId, questionId, answers, skipped),
   conversationLimit: () => ipcRenderer.invoke(IPC.conversationLimit),
+
+  workspaceList: () => ipcRenderer.invoke(IPC.workspaceList),
+  workspaceCreate: (name) => ipcRenderer.invoke(IPC.workspaceCreate, name),
+  workspaceValidate: (path) => ipcRenderer.invoke(IPC.workspaceValidate, path),
+  newSession: (conversationId, meta) => ipcRenderer.invoke(IPC.newSession, conversationId, meta),
 
   termOpen: (conversationId) => ipcRenderer.invoke(IPC.termOpen, conversationId),
   termWrite: (conversationId, data) => ipcRenderer.invoke(IPC.termWrite, conversationId, data),

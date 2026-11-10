@@ -15,6 +15,7 @@ import type {
 } from '../shared/types'
 import { getStore } from './store'
 import { streamChat, classifyError } from './llm'
+import { createWorkspace, listWorkspaces, workspaceExists } from './workspace'
 import { MAX_SESSIONS, approvalToolFor, APPROVAL_RULES } from '../shared/errorCodes'
 
 // 活跃的流式请求，按会话取消
@@ -196,6 +197,24 @@ export function registerIpcHandlers(): void {
   // ---------- 对话流 ----------
   ipcMain.handle(IPC.chatStream, async (event, req: StreamRequest) => {
     const win = BrowserWindow.fromWebContents(event.sender)
+
+    // 同一会话正在回复中：拒绝并发发送（对齐 chat.sessionBusyRetryLater「当前回复还没结束，请稍后再发送」）
+    if (activeStreams.has(req.conversationId)) {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send(IPC.chatStreamEvent, {
+          conversationId: req.conversationId,
+          chunk: {
+            type: 'error',
+            error: '当前回复还没结束，请稍后再发送',
+            errorKind: 'unknown',
+            errorHint: '当前回复还没结束，请稍后再发送',
+            errorCode: 'chat.sessionBusyRetryLater'
+          }
+        })
+      }
+      return false
+    }
+
     const abort = new AbortController()
     activeStreams.set(req.conversationId, abort)
 
@@ -289,13 +308,18 @@ export function registerIpcHandlers(): void {
     return true
   })
 
-  ipcMain.handle(IPC.chatAbort, (_e, conversationId: string) => {
-    const controller = activeStreams.get(conversationId)
-    if (controller) {
-      controller.abort()
-      activeStreams.delete(conversationId)
+  ipcMain.handle(IPC.chatAbort, (_e, conversationId: string): { ok: boolean; reason?: string } => {
+    try {
+      const controller = activeStreams.get(conversationId)
+      if (controller) {
+        controller.abort()
+        activeStreams.delete(conversationId)
+      }
+      return { ok: true }
+    } catch (err) {
+      // 对齐 chat.cancelFailedRetry「停止任务失败，请稍后重试。」
+      return { ok: false, reason: err instanceof Error ? err.message : 'abortFailed' }
     }
-    return true
   })
 
   // ---------- 工具审批（对齐 tool.approval.*） ----------
@@ -318,12 +342,21 @@ export function registerIpcHandlers(): void {
   // ---------- 向用户提问（对齐 tool.askUserQuestion.*） ----------
   ipcMain.handle(
     IPC.answerQuestion,
-    (_e, conversationId: string, questionId: string, answers: string[], skipped?: boolean): boolean => {
+    (
+      _e,
+      conversationId: string,
+      questionId: string,
+      answers: string[],
+      skipped?: boolean
+    ): { ok: boolean; reason?: string } => {
       const pending = pendingQuestions.get(conversationId)
-      if (!pending || pending.id !== questionId) return false
+      // 对齐 chat.answerQuestionNotFound：该会话已无挂起提问 → 问卷已过期或已被处理
+      if (!pending) return { ok: false, reason: 'notFound' }
+      // 对齐 chat.answerQuestionSessionMismatch：挂起的是另一个提问 → 会话已切换
+      if (pending.id !== questionId) return { ok: false, reason: 'sessionMismatch' }
       pendingQuestions.delete(conversationId)
       pending.resolve({ id: questionId, answers: answers ?? [], skipped: !!skipped })
-      return true
+      return { ok: true }
     }
   )
 
@@ -332,6 +365,31 @@ export function registerIpcHandlers(): void {
     const count = getStore().countConversations()
     return { reached: count >= MAX_SESSIONS, max: MAX_SESSIONS, count }
   })
+
+  // ---------- 工作空间（对齐 taskStarter.*） ----------
+  ipcMain.handle(IPC.workspaceList, () => {
+    const root = getStore().getSettings().workspacePath
+    return { root, items: listWorkspaces(root) }
+  })
+
+  ipcMain.handle(IPC.workspaceCreate, (_e, name: string) => {
+    const root = getStore().getSettings().workspacePath
+    const r = createWorkspace(root, name)
+    // 对齐 taskStarter.createWorkspace.toast.failed
+    return { ok: r.ok, path: r.path, reason: r.reason, root }
+  })
+
+  ipcMain.handle(IPC.workspaceValidate, (_e, path: string) => workspaceExists(path))
+
+  // ---------- 上下文档位（对齐 chat.sessionSeparator.*） ----------
+  ipcMain.handle(
+    IPC.newSession,
+    (_e, conversationId: string, meta: { model: string; mode: string; permission: string }) => {
+      const sep = { id: crypto.randomUUID(), createdAt: Date.now(), ...meta }
+      getStore().addSeparator(conversationId, sep)
+      return sep
+    }
+  )
 }
 
 export { activeStreams, pendingApprovals, pendingQuestions, sessionDecisions, launchDecisions }

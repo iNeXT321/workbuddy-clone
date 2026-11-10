@@ -651,3 +651,100 @@
 > - 运行时冒烟 `smoke-r8.cjs`：**13/13 通过**，渲染层 **0 控制台报错**；真实 UI 路径（输入框填文本 → 点发送）下审批卡片完整渲染，点击「允许」后主进程挂起的链路被唤醒、工具结果卡片展示、最终回复收尾。
 >
 > **第八轮 open 清零。** deferred 保持：GAP-007（IM 渠道 / 遥测 / 守护进程）、GAP-011（monaco 代码审阅器）。
+
+---
+
+## 第九轮监督（2026-11-11）：消息流健壮性 + 工作空间 + 模型能力 + 上下文档位
+
+监督依据：`spec/original-baseline.md` **§5.5 第六次补证**（`chat.*` 补充 41 条 / `taskStarter.*` 33 条 / `model.*` 26 条 / `idleCapability.*` 35 条）。
+
+本轮发现的核心结构性问题：第八轮打通了「工具链路闭环」，但**围绕消息流的健壮性（并发、失败分因、能力门控）与任务归属（工作空间、上下文档位）仍全为空白** —— 主进程 `chatAbort` 与 `answerQuestion` 都**固定返回 `true`**，渲染层无法区分失败原因；附件与模型能力**毫无校验**，不支持的图片会被静默送入请求；`taskStarter.*` / `chat.sessionSeparator.*` 描述的工作空间与上下文边界**无处挂载**。
+
+### GAP-046 · `chatAbort` / `answerQuestion` 固定返回 true，无法区分失败原因
+
+- **严重级**：P1（健壮性 / 可恢复性）
+- **维度**：主进程 + 渲染层
+- **基线依据**：`chat.cancelFailedRetry`=`停止任务失败，请稍后重试。`；`chat.answerQuestionFailed`=`发送回答失败`、`chat.answerQuestionSessionMismatch`=`会话已切换，请重新操作`、`chat.answerQuestionNotFound`=`问卷已过期或已被处理，请等待新的问卷` —— 三条**互不重叠**的失败分因文案，证明这两个接口都必须返回**可区分的结果结构**。
+- **现状**：`ipc.ts` 的 `chatAbort` 恒 `return true`（无 try/catch），`answerQuestion` 在「无挂起」与「挂起不匹配」两种情况下都返回同一个 `false`；渲染层 `stopStreaming` 不检查返回值、`answerQuestion` / `skipQuestion` 亦不检查，失败后**静默清空 UI 挂起态**且无任何提示。
+- **期望**：两接口统一返回 `{ ok, reason? }`；`chatAbort` 包 try/catch，异常时返回 `{ok:false, reason}`；`answerQuestion` 区分 `notFound`（无挂起）与 `sessionMismatch`（挂起 id 不匹配）；渲染层按 `reason` 分别 toast 对应文案，`stopStreaming` 失败时提示「停止任务失败，请稍后重试。」。
+- **验证方法**：运行时冒烟 —— `answerQuestion('no-such-conv', ...)` 断言 `reason === 'notFound'`；`chatAbort` 断言返回结构含 `ok`。
+- **修改文件**：src/main/ipc.ts、src/preload/index.ts、useApp.ts
+- **状态**：resolved
+
+### GAP-047 · 同一会话并发发送无拦截，第二路请求被静默接受
+
+- **严重级**：P1（健壮性）
+- **维度**：主进程
+- **基线依据**：`chat.sessionBusyRetryLater`=`当前回复还没结束，请稍后再发送` —— 明确存在「会话忙碌」这一拒绝态。
+- **现状**：`ipc.ts` 的 `chatStream` handler 直接 `activeStreams.set(conversationId, abort)`，**同一会话的第二次调用会覆盖第一路的 AbortController**，导致第一路无法再被取消、两路流写入同一会话消息体，数据互相污染。
+- **期望**：进入 handler 前先检查 `activeStreams.has(conversationId)`，命中则**立即下发 `chat.sessionBusyRetryLater` 错误分片并返回 `false`**，不启动新的流、不覆盖已有 controller。
+- **验证方法**：运行时冒烟 —— 假服务器把首轮响应延迟 900ms，在 120ms 处发起第二路，断言 `chatStream` 返回 `false`。
+- **修改文件**：src/main/ipc.ts
+- **状态**：resolved
+
+### GAP-048 · 附件与模型能力毫无校验，不支持的图片被静默送入请求
+
+- **严重级**：P1（正确性 / 成本）
+- **维度**：主进程 + 渲染层
+- **基线依据**：`chat.imageNotSupported`=`当前模型暂不支持图片，请切换模型后重试`、`chat.gifNotSupported`=`当前模型不支持 GIF，请切换至 kimi 或 minimax 模型后重试`、`chat.modelUnavailableSwitchModel`=`当前模型不可用，请切换模型`；`model.*` 中 `gpt4o.description`=`OpenAI 多模态模型`、`defaultGLM46`=`具有强大推理能力的先进语言模型`（未声明多模态）等**描述文案即能力声明**。注意 `gifNotSupported` **点名 kimi / minimax**，说明提示语与建议动作必须一致。
+- **现状**：`Composer.addFiles` 只按 `image/*` 过滤，**不查模型能力**；`sendMessage` 直接组装请求下发。用 GLM-4.6（不支持视觉）附加 PNG 会照常发起请求，最终以模型侧报错收场，用户体验为「静默失败 + 远端报错」。
+- **期望**：新增模型能力注册表 `BUILT_IN_MODELS`（`vision` / `gif` / `tools` 三维度）与 `checkAttachmentSupport()`；`Composer.addFiles`、`Composer.submit`、`useApp.sendMessage` **三处前置拦截**，命中即按 `image` / `gif` 分发对应文案；`suggestGifModel()` 优先返回 **kimi / minimax**，与文案一致；未知模型采取保守放行策略（仅对明确不支持的族拦截），避免误拦正常用户。
+- **验证方法**：逻辑冒烟 —— 13 项（族识别、版本后缀匹配、大小写 GIF、`glm-4.6` 不支持图片、`kimi/minimax` 支持 GIF、建议模型点名）；运行时冒烟 —— 以 `glm-4.6` 附加真实 PNG，断言弹出「暂不支持图片」且附件区**未新增缩略图**。
+- **修改文件**：src/shared/models.ts（新增）、src/shared/types.ts、Composer.tsx、useApp.ts
+- **状态**：resolved
+
+### GAP-049 · 工作空间完全缺失，任务无归属目录
+
+- **严重级**：P2（能力对齐）
+- **维度**：主进程 + 渲染层 + DB
+- **基线依据**：`taskStarter.*`（33 条）—— `startIn`=`任务启动于：`、`selectWorkspace`/`selectFolder`=`选择工作空间`、`startFromEmpty`=新建工作空间、`openNewDirectory`=打开本地文件夹、`noWorkspace`=不使用工作空间；`createWorkspaceDesc`=`为工作空间命名，本地将自动创建同名文件夹，命名后不可随意更改`（**真实 mkdir**）；`createWorkspace.toast.failed`=新建工作空间失败，请重试；`workspaceNotExist`=所选工作空间不存在，请重新选择；`noWorkspaceFound`=未找到工作空间；`workspacePathHint.*` 四条揭示**默认存储路径是系统设置项**。
+- **现状**：项目**完全没有工作空间概念** —— 无选择入口、无创建逻辑、无目录校验、无默认路径设置项。工具执行器（第八轮）读写的文件也无固定归属根目录。
+- **期望**：新增 `src/main/workspace.ts`（`validateWorkspaceName` 校验空/保留字/非法字符/超长，`createWorkspace` 真实 mkdir，`workspaceExists` 只认真实目录，`listWorkspaces` 过滤隐藏目录并按 mtime 排序）；`AppSettings` 增加 `workspacePath`（默认 `~/WorkBuddy`）与 `newSessionThresholdMinutes`（默认 240）；IPC 三通道 `workspaceList` / `workspaceCreate` / `workspaceValidate`；渲染层 `WorkspacePicker` 组件（搜索、列表、「不使用工作空间」、内联新建、失败 toast、路径提示可跳设置页）。
+- **验证方法**：逻辑冒烟 —— 14 项（四类非法名 + 正常名 + 真实 mkdir + 目录/文件/不存在三态校验 + 隐藏目录过滤 + `workspaceLabel`）；运行时冒烟 —— 展开菜单断言标题与「不使用工作空间」「新建工作空间」入口、路径提示文案，实际新建 `smoke-ws` 后断言 chip 更新**且磁盘上真实存在该目录**；DB 冒烟 —— `workspacePath` / `newSessionThresholdMinutes` 默认值与保存往返。
+- **修改文件**：src/main/workspace.ts（新增）、src/shared/types.ts、src/main/store.ts、src/main/ipc.ts、src/preload/index.ts、WorkspacePicker.tsx（新增）、Composer.tsx、App.tsx、i18n、global.css
+- **状态**：resolved
+- **deferred 说明**：`taskStarter.*` 中代码库来源的工作空间（`addRepo`/`selectRepo`/`searchRepo`/`addConnectorAuth`/`github*`/`selectBranch`/`switchBranch` 等 14 条）属**独立能力域（Git 集成）**，与 GAP-007（IM 渠道）同批 deferred。
+
+### GAP-050 · 文档选区与上下文档位无挂载点
+
+- **严重级**：P2（能力对齐）
+- **维度**：渲染层 + DB
+- **基线依据**：`chat.documentSelection.*` 六条 —— 按类型分 `documentLabel`=文档选区 / `spreadsheetLabel`=表格选区 / `presentationLabel`=幻灯片选区，按来源分 `localDocument`=本地文档 / `onlineDocument`=腾讯文档，`dismiss`=忽略此选区；`chat.docTabSwitch.dialog.*` —— `title`=确认切换文件 + `content`=`对话框有文档选区。如果切换查看新文件，当前选区将被清空。是否确认切换？`；`chat.sessionSeparator.*` —— `settingsTooltip`=`点击可跳转至{name}设置页` + `settingsLink`=`⚙ 设置`。
+- **现状**：`ChatMessage` 无 `selection` 字段；输入区无选区 chip；切换会话**无二次确认**；`chat.sessionSeparator.*` 描述的上下文边界在数据层与视图层**均不存在**（`separators` 表都没有）。
+- **期望**：`ChatMessage` 增加 `selection?: DocumentSelection`；`DocumentSelection`（`kind` / `source` / `name` / `text` / `locator`）与 `SessionSeparator`（`id` / `createdAt` / `model` / `mode` / `permission`）类型落地；新增 `SelectionChip` 与 `SeparatorRow` 组件；会话切换时若有选区则弹「确认切换文件」；`separators` 表存边界点，`getConversation` 一并返回；分隔行渲染在消息流中（跨点前置 / 晚于末条则挂末尾 / 无消息时挂欢迎页），含「⚙ 设置」跳转。
+- **验证方法**：DB 冒烟 —— 6 项（旧库自动补建 `separators` 表、往返一致、按 `createdAt` 升序、同 id 幂等、随会话返回 + 会话隔离、`pruneSeparatorsAfter` 截断清理）；运行时冒烟 —— 点击「新会话」断言分隔行出现、标签为「新的会话」、含「⚙ 设置」链接与 tooltip，**重新加载后仍在**（证明已落库）。
+- **修改文件**：src/shared/types.ts、src/main/store.ts、src/main/ipc.ts、src/preload/index.ts、useApp.ts、SelectionChip.tsx（新增）、ChatArea.tsx、Composer.tsx、App.tsx、i18n、global.css
+- **状态**：resolved
+
+### GAP-051 · 删除会话不清理 separators，遗留悬空记录
+
+- **严重级**：P2（数据一致性）
+- **维度**：DB
+- **基线依据**：数据完整性要求（`chat.sessionSeparator.*` 的档位从属于会话，会话删除后不应残留）。
+- **现状**：`store.deleteConversation` 只删 `messages` 与 `conversations` 两张表，**新增的 `separators` 表未纳入级联清理**。此为第九轮实现过程中由 DB 冒烟**实测捕获**的回归（非推测）。
+- **期望**：`deleteConversation` 同步 `DELETE FROM separators WHERE conversation_id = ?`。
+- **验证方法**：DB 冒烟 —— 写入 2 条档位后删除会话，断言 `listSeparators` 返回 0 条（修复前实测失败，修复后通过）。
+- **修改文件**：src/main/store.ts
+- **状态**：resolved
+
+### GAP-052 · `suggestGifModel` 建议模型与文案不符（本轮内部发现）
+
+- **严重级**：P3（文案一致性）
+- **维度**：渲染层/共享层
+- **基线依据**：`chat.gifNotSupported` 文案**点名**「请切换至 kimi 或 minimax 模型后重试」。
+- **现状**：`suggestGifModel` 最初实现为「返回第一个支持 GIF 的模型」，在该顺序下会返回 `gpt-4o`，与文案点名的 kimi / minimax **不一致**，构成「提示语说一套、建议动作为另一套」的失真。由逻辑冒烟实测捕获。
+- **期望**：优先在 `kimi` / `minimax` 中挑选，二者均不可用时再回退到任意 GIF 模型。
+- **验证方法**：逻辑冒烟 —— 断言 `suggestGifModel('claude-sonnet-4')` ∈ {Kimi, MiniMax}。
+- **修改文件**：src/shared/models.ts
+- **状态**：resolved
+
+---
+
+> 闭环状态（第九轮）：GAP-046 / 047 / 048 / 049 / 050 / 051 / 052 全部 **resolved 并复检通过**。
+>
+> - 逻辑冒烟 `smoke-r9-logic.mjs`：**45/45 通过**（模型能力表 12、附件能力校验 7、工作空间 14、错误码与常量 12）。
+> - DB 冒烟 `smoke-r9-db.mjs`：**18/18 通过**（旧库补建 separators 表 2、往返与排序 5、幂等 2、随会话返回与隔离 2、截断清理 1、设置新增字段 5、级联清理 1）。其中「级联清理」一项**修复前实测失败**，是 GAP-051 的直接证据。
+> - 运行时冒烟 `smoke-r9.cjs`：**19/19 通过**，渲染层 **0 控制台报错**；真实 UI 路径下验证了能力门控拦截、工作空间菜单与**真实落盘**、上下文档位落库与重载保持、并发发送拦截、提问失败分因。
+> - `npm run typecheck` 与 `npm run build` 均干净通过。
+>
+> **第九轮 open 清零。** deferred 累计：GAP-007（IM 渠道 / 遥测 / 守护进程）、GAP-011（monaco 代码审阅器）、GAP-049 代码库来源工作空间（Git 集成）。
