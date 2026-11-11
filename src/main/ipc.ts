@@ -19,7 +19,8 @@ import type {
   Colleague,
   ColleagueVisibility,
   ChannelKind,
-  ChannelState
+  ChannelState,
+  Skill
 } from '../shared/types'
 import { getStore } from './store'
 import { streamChat, classifyError } from './llm'
@@ -600,6 +601,81 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle(IPC.colleagueTasks, (_e, colleagueId?: string) => getStore().listColleagueTasks(colleagueId))
+
+  // ---------- 技能（对齐 skills.*） ----------
+
+  /** 技能变更广播 —— 与助理域同款，驱动多窗口同步 */
+  const broadcastSkillChanged = (): void => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send(IPC.skillChanged)
+    }
+  }
+
+  ipcMain.handle(IPC.skillList, () => getStore().listSkills())
+
+  ipcMain.handle(IPC.skillGet, (_e, id: string) => getStore().getSkill(id))
+
+  ipcMain.handle(IPC.skillSave, (_e, input: Skill) => {
+    const next = getStore().saveSkill(input)
+    broadcastSkillChanged()
+    return next
+  })
+
+  ipcMain.handle(IPC.skillDelete, (_e, id: string) => {
+    const ok = getStore().deleteSkill(id)
+    if (ok) broadcastSkillChanged()
+    return ok
+  })
+
+  ipcMain.handle(IPC.skillInstalled, (_e, id: string, installed: boolean) => {
+    const next = getStore().setSkillInstalled(id, installed)
+    if (next) broadcastSkillChanged()
+    return next
+  })
+
+  ipcMain.handle(IPC.skillEnabled, (_e, id: string, enabled: boolean) => {
+    const next = getStore().setSkillEnabled(id, enabled)
+    if (next) broadcastSkillChanged()
+    return next
+  })
+
+  ipcMain.handle(IPC.skillPinned, (_e, id: string, pinned: boolean) => {
+    const next = getStore().setSkillPinned(id, pinned)
+    if (next) broadcastSkillChanged()
+    return next
+  })
+
+  ipcMain.handle(IPC.skillSync, (_e, id: string, sync: Skill['sync']) => {
+    const next = getStore().setSkillSync(id, sync)
+    if (next) broadcastSkillChanged()
+    return next
+  })
+
+  ipcMain.handle(IPC.skillPurchase, (_e, id: string, kind: 'monthly' | 'permanent', price?: number) => {
+    const next = getStore().purchaseSkill(id, kind, price)
+    if (next) broadcastSkillChanged()
+    return next
+  })
+
+  ipcMain.handle(IPC.skillRefund, (_e, id: string) => {
+    const next = getStore().refundSkill(id)
+    if (next) broadcastSkillChanged()
+    return next
+  })
+
+  ipcMain.handle(IPC.skillEnabledCount, () => getStore().countEnabledSkills())
+
+  ipcMain.handle(IPC.skillBatchEnabled, (_e, ids: string[], enabled: boolean) => {
+    const r = getStore().batchSetSkillEnabled(ids, enabled)
+    broadcastSkillChanged()
+    return r
+  })
+
+  ipcMain.handle(IPC.skillBatchUninstall, (_e, ids: string[]) => {
+    const r = getStore().batchUninstallSkills(ids)
+    broadcastSkillChanged()
+    return r
+  })
 }
 
 export { activeStreams, pendingApprovals, pendingQuestions, sessionDecisions, launchDecisions }

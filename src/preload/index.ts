@@ -22,7 +22,8 @@ import type {
   ChannelBinding,
   ColleagueMemory,
   ColleagueQuota,
-  ColleagueTask
+  ColleagueTask,
+  Skill
 } from '../shared/types'
 import type { CalendarDefaults } from '../shared/scheduleEvent'
 
@@ -124,6 +125,22 @@ export interface WorkbuddyBridge {
   colleagueMemorySave(subject: string, enabled: boolean): Promise<ColleagueMemory>
   colleagueTasks(colleagueId?: string): Promise<ColleagueTask[]>
   onColleagueChanged(cb: () => void): () => void
+
+  // 技能（对齐 skills.*）
+  skillList(): Promise<Skill[]>
+  skillGet(id: string): Promise<Skill | null>
+  skillSave(input: Skill): Promise<Skill>
+  skillDelete(id: string): Promise<boolean>
+  skillInstalled(id: string, installed: boolean): Promise<Skill | null>
+  skillEnabled(id: string, enabled: boolean): Promise<Skill | null>
+  skillPinned(id: string, pinned: boolean): Promise<Skill | null>
+  skillSync(id: string, sync: Skill['sync']): Promise<Skill | null>
+  skillPurchase(id: string, kind: 'monthly' | 'permanent', price?: number): Promise<Skill | null>
+  skillRefund(id: string): Promise<Skill | null>
+  skillEnabledCount(): Promise<number>
+  skillBatchEnabled(ids: string[], enabled: boolean): Promise<{ ok: string[]; failed: string[] }>
+  skillBatchUninstall(ids: string[]): Promise<{ ok: string[]; failed: string[] }>
+  onSkillChanged(cb: () => void): () => void
 
   // 内置终端
   termOpen(conversationId: string): Promise<{ ok: boolean; shell?: string }>
@@ -230,6 +247,25 @@ const bridge: WorkbuddyBridge = {
     const listener = () => cb()
     ipcRenderer.on(IPC.colleagueChanged, listener)
     return () => ipcRenderer.removeListener(IPC.colleagueChanged, listener)
+  },
+
+  skillList: () => ipcRenderer.invoke(IPC.skillList),
+  skillGet: (id) => ipcRenderer.invoke(IPC.skillGet, id),
+  skillSave: (input) => ipcRenderer.invoke(IPC.skillSave, input),
+  skillDelete: (id) => ipcRenderer.invoke(IPC.skillDelete, id),
+  skillInstalled: (id, installed) => ipcRenderer.invoke(IPC.skillInstalled, id, installed),
+  skillEnabled: (id, enabled) => ipcRenderer.invoke(IPC.skillEnabled, id, enabled),
+  skillPinned: (id, pinned) => ipcRenderer.invoke(IPC.skillPinned, id, pinned),
+  skillSync: (id, sync) => ipcRenderer.invoke(IPC.skillSync, id, sync),
+  skillPurchase: (id, kind, price) => ipcRenderer.invoke(IPC.skillPurchase, id, kind, price),
+  skillRefund: (id) => ipcRenderer.invoke(IPC.skillRefund, id),
+  skillEnabledCount: () => ipcRenderer.invoke(IPC.skillEnabledCount),
+  skillBatchEnabled: (ids, enabled) => ipcRenderer.invoke(IPC.skillBatchEnabled, ids, enabled),
+  skillBatchUninstall: (ids) => ipcRenderer.invoke(IPC.skillBatchUninstall, ids),
+  onSkillChanged: (cb) => {
+    const listener = () => cb()
+    ipcRenderer.on(IPC.skillChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.skillChanged, listener)
   },
 
   termOpen: (conversationId) => ipcRenderer.invoke(IPC.termOpen, conversationId),

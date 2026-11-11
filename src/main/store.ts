@@ -19,11 +19,13 @@ import type {
   ColleagueMemory,
   ColleagueQuota,
   ColleagueTask,
-  ChannelState
+  ChannelState,
+  Skill
 } from '../shared/types'
 import { nextRun } from '../shared/schedule'
 import { DEFAULT_CALENDAR_DEFAULTS } from '../shared/scheduleEvent'
 import { PLAN_LIMITS, DEFAULT_PLAN, isExclusiveChannel, CLOUD_SUBJECT } from '../shared/colleague'
+import { emptyMetrics } from '../shared/skill'
 
 /**
  * 本地存储层 —— 对齐 WorkBuddy 本体的 node:sqlite 用法：
@@ -202,6 +204,37 @@ export class Store {
         updated_at INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_ctasks_colleague ON colleague_tasks(colleague_id);
+      -- 技能（对齐 skills.*）—— 安装状态 / 自动触发 / 置顶 / 同步 / 付费
+      CREATE TABLE IF NOT EXISTS skills (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        source TEXT NOT NULL DEFAULT 'installed',
+        installed_group TEXT,
+        version TEXT,
+        author TEXT,
+        license TEXT,
+        installed INTEGER NOT NULL DEFAULT 0,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        pinned INTEGER NOT NULL DEFAULT 0,
+        builtin INTEGER NOT NULL DEFAULT 0,
+        needs_api_key INTEGER NOT NULL DEFAULT 0,
+        api_key_configured INTEGER NOT NULL DEFAULT 0,
+        sync_state TEXT NOT NULL DEFAULT 'localOnly',
+        cloud_available INTEGER NOT NULL DEFAULT 0,
+        paid_kind TEXT NOT NULL DEFAULT 'free',
+        price REAL,
+        purchased_until INTEGER,
+        purchased_at INTEGER,
+        refund_count INTEGER NOT NULL DEFAULT 0,
+        risk_level TEXT,
+        metrics TEXT NOT NULL DEFAULT '{}',
+        tags TEXT NOT NULL DEFAULT '[]',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_skills_source ON skills(source, installed);
+      CREATE INDEX IF NOT EXISTS idx_skills_pinned ON skills(pinned, updated_at);
     `)
 
     // 兼容旧库：老版本 messages 表无 attachments 列，补列（ALTER 幂等失败则忽略）
@@ -884,6 +917,204 @@ export class Store {
     if (!before) return false
     this.db.prepare('DELETE FROM colleague_tasks WHERE id = ?').run(id)
     return true
+  }
+
+  // ---------- 技能（对齐 skills.*） ----------
+
+  private rowToSkill(r: Record<string, unknown>): Skill {
+    return {
+      id: String(r.id),
+      name: String(r.name),
+      description: r.description == null ? undefined : String(r.description),
+      source: (String(r.source) as Skill['source']) ?? 'installed',
+      installedGroup: r.installed_group == null ? undefined : (String(r.installed_group) as Skill['installedGroup']),
+      version: r.version == null ? undefined : String(r.version),
+      author: r.author == null ? undefined : String(r.author),
+      license: r.license == null ? undefined : String(r.license),
+      installed: Number(r.installed) === 1,
+      enabled: Number(r.enabled) === 1,
+      pinned: Number(r.pinned) === 1,
+      builtin: Number(r.builtin) === 1,
+      needsApiKey: Number(r.needs_api_key) === 1,
+      apiKeyConfigured: Number(r.api_key_configured) === 1,
+      sync: (String(r.sync_state) as Skill['sync']) ?? 'localOnly',
+      cloudAvailable: Number(r.cloud_available) === 1,
+      paidKind: (String(r.paid_kind) as Skill['paidKind']) ?? 'free',
+      price: r.price == null ? undefined : Number(r.price),
+      purchasedUntil: r.purchased_until == null ? undefined : Number(r.purchased_until),
+      purchasedAt: r.purchased_at == null ? undefined : Number(r.purchased_at),
+      refundCount: Number(r.refund_count ?? 0),
+      riskLevel: r.risk_level == null ? undefined : (String(r.risk_level) as Skill['riskLevel']),
+      metrics: r.metrics ? { ...emptyMetrics(), ...(JSON.parse(String(r.metrics)) as object) } : emptyMetrics(),
+      tags: r.tags ? (JSON.parse(String(r.tags)) as string[]) : [],
+      createdAt: Number(r.created_at),
+      updatedAt: Number(r.updated_at)
+    }
+  }
+
+  /** 列出技能 —— 置顶优先、其次更新时间倒序（对齐 card.pin 排序语义） */
+  listSkills(): Skill[] {
+    const rows = this.db
+      .prepare('SELECT * FROM skills ORDER BY pinned DESC, updated_at DESC')
+      .all() as Array<Record<string, unknown>>
+    return rows.map((r) => this.rowToSkill(r))
+  }
+
+  getSkill(id: string): Skill | null {
+    const row = this.db.prepare('SELECT * FROM skills WHERE id = ?').get(id) as
+      | Record<string, unknown>
+      | undefined
+    return row ? this.rowToSkill(row) : null
+  }
+
+  saveSkill(input: Skill): Skill {
+    const now = this.nextTimestamp()
+    const existing = this.getSkill(input.id)
+    const vals = [
+      input.name,
+      input.description ?? null,
+      input.source,
+      input.installedGroup ?? null,
+      input.version ?? null,
+      input.author ?? null,
+      input.license ?? null,
+      input.installed ? 1 : 0,
+      input.enabled ? 1 : 0,
+      input.pinned ? 1 : 0,
+      input.builtin ? 1 : 0,
+      input.needsApiKey ? 1 : 0,
+      input.apiKeyConfigured ? 1 : 0,
+      input.sync,
+      input.cloudAvailable ? 1 : 0,
+      input.paidKind,
+      input.price ?? null,
+      input.purchasedUntil ?? null,
+      input.purchasedAt ?? null,
+      input.refundCount ?? 0,
+      input.riskLevel ?? null,
+      JSON.stringify(input.metrics ?? emptyMetrics()),
+      JSON.stringify(input.tags ?? [])
+    ]
+    if (existing) {
+      this.db
+        .prepare(
+          `UPDATE skills SET name=?, description=?, source=?, installed_group=?, version=?, author=?,
+           license=?, installed=?, enabled=?, pinned=?, builtin=?, needs_api_key=?, api_key_configured=?,
+           sync_state=?, cloud_available=?, paid_kind=?, price=?, purchased_until=?, purchased_at=?,
+           refund_count=?, risk_level=?, metrics=?, tags=?, updated_at=? WHERE id=?`
+        )
+        .run(...vals, now, input.id)
+    } else {
+      this.db
+        .prepare(
+          `INSERT INTO skills (name, description, source, installed_group, version, author, license,
+           installed, enabled, pinned, builtin, needs_api_key, api_key_configured, sync_state,
+           cloud_available, paid_kind, price, purchased_until, purchased_at, refund_count, risk_level,
+           metrics, tags, id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        )
+        .run(...vals, input.id, input.createdAt ?? now, now)
+    }
+    return this.getSkill(input.id)!
+  }
+
+  /** 删除技能记录 —— 对齐 `delete.title`（卸载技能） */
+  deleteSkill(id: string): boolean {
+    if (!this.getSkill(id)) return false
+    this.db.prepare('DELETE FROM skills WHERE id = ?').run(id)
+    return true
+  }
+
+  /** 安装 / 卸载 —— 卸载不删记录（保留可重装），仅翻 installed 位 */
+  setSkillInstalled(id: string, installed: boolean): Skill | null {
+    const s = this.getSkill(id)
+    if (!s) return null
+    return this.saveSkill({
+      ...s,
+      installed,
+      // 安装即默认启用「自动触发」（对齐 card.enable 语义：安装后可立即在对话中自动触发）；
+      // 卸载后不保留启用态
+      enabled: installed ? true : false,
+      installedGroup: installed ? (s.installedGroup ?? 'market') : s.installedGroup
+    })
+  }
+
+  /** 启用 / 停用「自动触发」—— 对齐 `card.enable` / `card.disable` */
+  setSkillEnabled(id: string, enabled: boolean): Skill | null {
+    const s = this.getSkill(id)
+    if (!s) return null
+    return this.saveSkill({ ...s, enabled })
+  }
+
+  /** 置顶 / 取消置顶 —— 对齐 `card.pin` / `card.unpin` */
+  setSkillPinned(id: string, pinned: boolean): Skill | null {
+    const s = this.getSkill(id)
+    if (!s) return null
+    return this.saveSkill({ ...s, pinned })
+  }
+
+  /** 已启用的技能数 —— 对齐 `enabledWarning`（超 80 个告警） */
+  countEnabledSkills(): number {
+    const row = this.db.prepare('SELECT COUNT(*) AS n FROM skills WHERE enabled = 1 AND installed = 1').get() as { n: number }
+    return Number(row.n)
+  }
+
+  /** 上传到云端（桩）—— 对齐 `cloud.action.upload`，仅翻转同步态 */
+  setSkillSync(id: string, sync: Skill['sync']): Skill | null {
+    const s = this.getSkill(id)
+    if (!s) return null
+    return this.saveSkill({ ...s, sync, cloudAvailable: sync !== 'localOnly' })
+  }
+
+  /** 购买（桩）—— 对齐 `buySkill`：monthly 需有效期 */
+  purchaseSkill(id: string, kind: 'monthly' | 'permanent', price?: number): Skill | null {
+    const s = this.getSkill(id)
+    if (!s) return null
+    const now = Date.now()
+    return this.saveSkill({
+      ...s,
+      paidKind: kind,
+      price: price ?? s.price,
+      purchasedAt: now,
+      purchasedUntil: kind === 'monthly' ? now + 30 * 86400000 : undefined
+    })
+  }
+
+  /** 退款（桩）—— 对齐 `refund.confirmBody`：退款同时卸载，且累计次数 */
+  refundSkill(id: string): Skill | null {
+    const s = this.getSkill(id)
+    if (!s) return null
+    return this.saveSkill({
+      ...s,
+      refundCount: (s.refundCount ?? 0) + 1,
+      purchasedAt: undefined,
+      purchasedUntil: undefined,
+      installed: false,
+      enabled: false
+    })
+  }
+
+  /** 批量启用 / 停用 —— 返回各自成败（对齐 `batch.togglePartialFailed`） */
+  batchSetSkillEnabled(ids: string[], enabled: boolean): { ok: string[]; failed: string[] } {
+    const ok: string[] = []
+    const failed: string[] = []
+    for (const id of ids) {
+      const r = this.setSkillEnabled(id, enabled)
+      if (r) ok.push(id)
+      else failed.push(id)
+    }
+    return { ok, failed }
+  }
+
+  /** 批量卸载 —— 对齐 `batch.uninstall` */
+  batchUninstallSkills(ids: string[]): { ok: string[]; failed: string[] } {
+    const ok: string[] = []
+    const failed: string[] = []
+    for (const id of ids) {
+      const r = this.setSkillInstalled(id, false)
+      if (r) ok.push(id)
+      else failed.push(id)
+    }
+    return { ok, failed }
   }
 
   // ---------- 定时任务（对齐 automation.*） ----------

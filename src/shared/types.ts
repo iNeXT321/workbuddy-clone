@@ -249,6 +249,57 @@ export interface ColleagueTask {
   updatedAt: number
 }
 
+// ==================== 技能（对齐 skills.*，513 条） ====================
+
+/**
+ * 技能实体 —— 对齐 `skills.*`。
+ * 类型与推导函数在 `shared/skill.ts`，此处仅定义持久化与 IPC 形状。
+ */
+export interface Skill {
+  id: string
+  name: string
+  description?: string
+  /** 来源市场 —— 对齐 `tab.*` */
+  source: 'recommend' | 'skillhub' | 'plugins' | 'knot' | 'enterprise' | 'installed'
+  /** 已安装分组 —— 对齐 `installed.group.*` */
+  installedGroup?: 'custom' | 'market' | 'plugins'
+  version?: string
+  author?: string
+  license?: string
+  installed: boolean
+  /** 启用「自动触发」—— 对齐 `card.enable` / `card.disable` */
+  enabled: boolean
+  pinned: boolean
+  builtin: boolean
+  /** 需配置 API Key —— 对齐 `card.needsApiKey` */
+  needsApiKey: boolean
+  apiKeyConfigured?: boolean
+  /** 同步态 —— 对齐 `sync.*` */
+  sync: 'localOnly' | 'cloudOnly' | 'synced' | 'localAhead' | 'cloudAhead'
+  /** 云端可用 —— 对齐 `tag.cloudAvailable` */
+  cloudAvailable: boolean
+  /** 付费类型 */
+  paidKind: 'free' | 'monthly' | 'permanent'
+  price?: number
+  purchasedUntil?: number
+  purchasedAt?: number
+  refundCount?: number
+  /** 安全风险等级 —— 对齐 `security.result.*` */
+  riskLevel?: 'safe' | 'low' | 'medium' | 'high'
+  metrics: SkillMetrics
+  tags?: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+/** 技能指标 —— 对齐 `card.*` 与 `detail.metric*`（同一数值两处文案名不同） */
+export interface SkillMetrics {
+  downloadCount: number
+  starCount: number
+  useCount: number
+  installCount: number
+}
+
 // ==================== 日程 / 日历（对齐 home.schedule.*，676 条） ====================
 
 /**
@@ -649,6 +700,21 @@ export const IPC = {
   colleagueMemorySave: 'wb:colleague:memory-save',
   colleagueTasks: 'wb:colleague:tasks',
   colleagueChanged: 'wb:colleague:changed',
+  // 技能（对齐 skills.*）
+  skillList: 'wb:skill:list',
+  skillGet: 'wb:skill:get',
+  skillSave: 'wb:skill:save',
+  skillDelete: 'wb:skill:delete',
+  skillInstalled: 'wb:skill:installed',
+  skillEnabled: 'wb:skill:enabled',
+  skillPinned: 'wb:skill:pinned',
+  skillSync: 'wb:skill:sync',
+  skillPurchase: 'wb:skill:purchase',
+  skillRefund: 'wb:skill:refund',
+  skillEnabledCount: 'wb:skill:enabled-count',
+  skillBatchEnabled: 'wb:skill:batch-enabled',
+  skillBatchUninstall: 'wb:skill:batch-uninstall',
+  skillChanged: 'wb:skill:changed',
   // 内置终端
   termOpen: 'wb:terminal:open',
   termWrite: 'wb:terminal:write',

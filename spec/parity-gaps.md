@@ -1026,3 +1026,72 @@
 > 另修正多处**测试脚本自身缺陷**：重名用例原在列表已满（3 位 = standard 上限）时点「创建助理」，被配额拦截致向导未打开 —— 已改为在同一向导内先试重名再改名创建；创建成功后向导自动关闭，原脚本仍按 Esc 会误关整个面板致后续连锁 —— 已改为断言自动关闭；`配置页关闭` 原点「确定」，而词典 `common.confirm`=`确认`；`配额未提示时不会打开向导` 原用 `.col-dialog` 判断，与配额对话框自身同选择器冲突 —— 改用向导独有的 `.col-steps`；`openMenu` 原按昵称定位，复制产生的副本昵称相同（`{name} 的副本` 仅改 `displayName`，昵称继承「小研」）导致误点副本 —— 已给卡片加 `data-id` 并改按 id 定位。
 >
 > deferred 累计（本轮无新增）：GAP-007（IM 渠道 / 遥测 / 守护进程）、GAP-011（monaco 代码审阅器）、GAP-049 代码库来源工作空间（Git 集成）、`conversation.shareFile`（协同域）、日程域外延子域；另 `colleagues.createDialog.codeRepo.*`（29 条，GitHub / CNB / 工蜂 OAuth 授权链路）、`colleagues.createDialog.tencentDocs.*`（17 条，腾讯文档授权选文件）、`colleagues.createDialog.hireExpert.*`（19 条，专家雇佣 Beta / 企业智能体）、`colleagues.chat.*`（57 条，真实对话实例与多轮编排）—— 原文自身均标注 Beta / 未实现 / 需授权，复刻当前以桩提示对齐。
+
+---
+
+## 第十四轮 · 技能市场 / 技能管理域（`skills.*`，513 键）
+
+> 选域依据：命名空间排名 settings 1897 > collab 1487 > automation 846 > home 676 > colleagues 573 > **skills 513** > tencentLexiang 360 > myFiles 331 > conversation 314 > office 301。代码引用统计（排除 i18n 文件）中 **skills = 0**，是当时**最大的完全未覆盖域**，故定为第十四轮目标。基线依据见 `original-baseline.md` §5.10。
+
+### GAP-070 · 技能域完全缺失（无模型 / 计算层 / 面板）
+
+- **严重级**：P1（核心能力缺失）
+- **维度**：计算层 + 数据层 + 渲染层
+- **基线依据**：`skills.tab.{recommend,skillhub,plugins,knot,enterprise,installed}` 六个 Tab；`skills.card.{install,goChat,disable,edit,uninstall,pin,unpin}` 卡片两态动作；`skills.toggle.tip.{enable,disable}`（「对话中自动判断是否使用」开关，非安装/卸载）；`skills.enabledWarning.*` 阈值 80；`skills.sync.{localOnly,cloudOnly,synced,localAhead,cloudAhead}` 同步五态；`skills.builtin.sort.{score,useCount,installCount,updatedAt}`。
+- **现状**：代码库完全没有技能域，无模型、无存储、无面板、无 i18n。
+- **期望**：（a）`src/shared/skill.ts` 计算层（六 Tab、卡片动作两态、来源徽标 + 来源键不对称回落、启用/停用语义与 80 阈值、同步五态、内置排序四项、搜索/标签筛选、批量上限与批量动作、上传/分享/付费桩判定、`newSkill`、`countBySource` 等）；（b）`store.ts` 建 `skills` 表与全套 CRUD / 安装 / 启用 / 置顶 / 同步 / 付费 / 退款 / 批量方法；（c）14 条 `wb:skill:*` IPC + `wb:skill:changed` 广播 + preload 桥接 + 类型定义；（d）513 条 zh + 512 条 en i18n。
+- **验证方法**：三套冒烟一致通过（见闭环块）。
+- **修改文件**：src/shared/skill.ts（新增）、src/shared/types.ts、src/main/store.ts、src/main/ipc.ts、src/preload/index.ts、src/renderer/src/i18n/index.ts
+- **状态**：resolved
+
+### GAP-071 · 缺失技能市场面板（六 Tab / 卡片网格 / 搜索筛排 / 详情抽屉）
+
+- **严重级**：P1（核心能力缺失）
+- **维度**：渲染层
+- **基线依据**：`skills.recommend.*` 19 条、`skills.skillhub.*` 26 条、`skills.plugins.*` 3 条、`skills.knot.*` 18 条、`skills.enterprise.*` 2 条、`skills.installed.*` 10 条；`skills.detail.*` 31 条（`detail.metric{Version,UseCount,InstallCount,DownloadCount,StarCount,Author}`、`detail.{overview,examples,usedCases}.title`、`OVERVIEW_SEARCH_*`、`translationNotice`、`REPLICATE_KEY`、`BACK_TO_SKILL_KEY`）；`skills.search.*` 5 条、`skills.tag.*` 3 条。
+- **现状**：无任何技能浏览 / 安装入口。
+- **期望**：（a）六 Tab（带已安装计数徽标，计数按 `installed` 位而非来源字段）；（b）卡片网格 —— 名称 / 描述 / 标签 / 付费徽标 / 指标 / 置顶星标 / 菜单；（c）卡片两态动作（未安装 `install`，已安装 `goChat/disable|enable/edit/uninstall/pin|unpin`）；（d）搜索 + 标签筛选 + 排序下拉 + 内置排序四项；（e）详情抽屉 —— 基本信息、指标六项、概述 / 示例 / 使用场景三段（含概述搜索与折叠）、复制 / 返回；（f）空态按 Tab 与搜索态分派（含来源键不对称回落）。
+- **验证方法**：三套冒烟一致通过（见闭环块）。
+- **修改文件**：src/renderer/src/components/SkillsPanel.tsx（新增）、src/renderer/src/stores/useSkills.ts（新增）、src/renderer/src/App.tsx、src/renderer/src/styles/global.css
+- **状态**：resolved
+
+### GAP-072 · 缺失批量管理 / 技能选择器 / 上传安装 / 卸载确认
+
+- **严重级**：P1（核心能力缺失）
+- **维度**：渲染层 + 数据层
+- **基线依据**：`skills.batch.*` 14 条（`batch.limitExceeded` 含 `{limit}`，复刻取 50；`batch.{uninstall,enable,disable,uploadToCloud}`；`BATCH_SELECT_ALL_KEY`/`BATCH_DESELECT_ALL_KEY`/`BATCH_SELECTED_KEY`/`BATCH_PARTIAL_FAILED_KEY`）；`skills.batchUninstall.*` 8 条；`skills.installConfirm.*` 7 条；`skills.picker.*` 12 条（`picker.empty.{recommend,skillhub,plugins,knot,installed}`）；`skills.upload.*` 24 条（`upload.policy.{disabled,notInWhitelist,inBlacklist,invalidMode}`、`UPLOAD_ACCEPT_FOLDER/ZIP/MD`）；`skills.marketInstall.*` 3 条；`skills.uninstall.*` 4 条。
+- **现状**：无批量选择与批量动作，无技能选择器，无本地上传入口。
+- **期望**：（a）批量模式 —— 全选 / 反选、已选计数、四项批量动作、超 50 上限拦截、部分失败提示；（b）批量卸载专用对话框；（c）安装确认对话框；（d）技能选择器（五来源空态）；（e）本地上传对话框（拖拽区 + 策略拦截桩 + 接受类型文件夹/ZIP/MD）；（f）卸载确认。
+- **验证方法**：三套冒烟一致通过（见闭环块）。
+- **修改文件**：src/shared/skill.ts、src/renderer/src/components/SkillsPanel.tsx、src/main/store.ts
+- **状态**：resolved
+
+### GAP-073 · 缺失云端同步 / 安全检测 / 分享 / 付费退款（桩与状态位）
+
+- **严重级**：P2（能力外延，原文自身多为桩）
+- **维度**：计算层 + 数据层 + 渲染层
+- **基线依据**：`skills.sync.{localOnly,cloudOnly,synced,localAhead,cloudAhead}`；`skills.cloud.*` 14 条 + `skills.cloudUpload.*` 47 + `skills.cloudDownload.*` 5 + `skills.cloudUninstall.*` 4（`cloud.action.{upload,update,download,updateLocal}`）；`skills.security.*` 79 条（`security.result.{safe,low,medium,high}`、`security.riskLevel.*`、`security.verdict.{white,grey,black}`、`security.riskTooltip.*`、`autoInstall` 非高风险自动安装）；`skills.share.*` 72 条（`share.gate.{passed,pending,blocked,failed,unsupportedSource,flowPending}`、`share.step.{upload,securityCheck,createLink}`、`share.channel.*` 微信小程序码）；`skills.purchase.*` 3 + `skills.refund.*` 4（`REFUND_LIMIT = 3`）+ `paidTag`/`purchasedChip{Permanent,Monthly,Pending}`/`paidExpiredTag`/`paidPerMonth`/`paidPermanent`/`yuan`。
+- **现状**：无同步状态位、无风险档位、无分享闸门、无付费与退款。
+- **期望**：（a）同步五态可落库并可查询；（b）风险四档 + verdict 三色 + tooltip，`canAutoInstall` = 非高风险；（c）分享闸门四步（支持 / 待处理 / 阻断 / 失败 / 来源不支持 / 流程待定）+ 三步骤 + 小程序码渠道桩；（d）付费三态徽标与价格标签，购买 / 退款落库，退款达 3 次后 `canRefund` 为假；（e）云端上传 / 下载 / 更新 / 更新本地走桩提示与状态位。
+- **验证方法**：三套冒烟一致通过（见闭环块）。
+- **修改文件**：src/shared/skill.ts、src/main/store.ts、src/renderer/src/components/SkillsPanel.tsx
+- **状态**：resolved
+
+---
+
+> 闭环状态（第十四轮）：GAP-070 / 071 / 072 / 073 全部 **resolved 并复检通过**。
+>
+> - 逻辑冒烟 `smoke-r14-logic.mjs`：**243/243 通过**（六 Tab 与来源徽标回落、卡片动作两态、启用语义与 80 阈值、同步五态、风险四档与 autoInstall、内置排序四项、搜索与标签筛选、批量上限 50 与四动作、上传策略与接受类型、分享闸门与三步骤、付费三态与退款上限 3、`newSkill`/`countBySource`/`emptyMetrics`、词典完整性 513×2 与无空值）。
+> - DB 冒烟 `smoke-r14-db.cjs`：**110/110 通过**（建表与索引、CRUD、安装/卸载（卸载清启用位）、启用/停用、置顶排序、同步状态、付费与退款、批量启用与批量卸载、启用计数、单调时间戳）。
+> - 运行时冒烟 `smoke-r14.cjs`：**143/143 通过**，渲染层 **0 控制台报错**；真实 UI 路径下验证入口 / 六 Tab 切换与计数徽标 / 卡片网格 / 安装与卸载 / 启用停用与 80 警告 / 置顶 / 搜索与标签筛选与排序 / 详情抽屉 / 批量模式与上限 / 技能选择器 / 本地上传 / 分享桩 / 付费与退款 / Esc 逐层 / 数据一致性。
+> - 回归：`smoke-r13-*`（逻辑 151/151、DB 95/95、运行时 149/149）、`smoke-r12-*`（逻辑 151/151、DB 54/54、运行时 101/101）、`smoke-r11-*`（逻辑 129/129、DB 49/49、运行时 50/50）、`smoke-r10-*`（逻辑 70/70、DB 20/20、运行时 33/33）**全绿**，0 控制台报错。
+> - `npm run typecheck` 与 `npm run build` 均干净通过。
+>
+> **第十四轮 open 清零。** 本轮闭环过程中由运行时冒烟暴露并修复的**真实缺陷**共 3 处：
+> 1. **已安装 Tab 计数徽标口径错误** —— 面板原用 `countBySource(store.skills).installed` 渲染徽标，而该函数数的是「**来源字段等于 `installed`**」的技能，与「**已安装**」并非同一口径（推荐 / SkillHub 中已安装的技能也应计入）。已改为 `store.skills.filter(s => s.installed).length`。
+> 2. **安装后默认启用与注释语义不符** —— 注释写「安装后默认启用」，实现却写 `enabled: installed ? s.enabled : false`，即安装后沿用原 `enabled`（初装为 false），得「已安装但未启用」。已改为安装时强制 `enabled: true`。
+> 3. **空态 key 回落不完整** —— `recommend` 无独立 `searchEmpty` 键、`plugins` / `enterprise` 无独立 `searchEmpty` 与 `empty` 键，原实现直接拼 `skills.${tab}.searchEmpty` / `.empty` 会渲染出键名本身。已加 `hasOwnSearchEmpty` / `hasOwnEmpty` 判据并回落 `skills.knot.searchEmpty` / `skills.recommend.empty` / `skills.enterprise.empty`。
+>
+> 另修正多处**测试脚本自身缺陷**：`已安装 Tab 带计数徽标` 原硬编码 `/9/`，而真实徽标数随 seed 数据变化 —— 已改为读取并比对实际 `installed` 数量；`基本信息含「开发者信息」` 原断言文案与词典不符（词典为 `detail.metricAuthor`=「作者信息」），面板实现是正确的 —— 已修正脚本预期；`DB 冒烟` 两处排序断言原未考虑 `nextTimestamp()` 的单调递增语义（同一测试内最后写入者必排最前）—— 已修正断言。
+>
+> deferred 累计（本轮新增 1 项）：GAP-007（IM 渠道 / 遥测 / 守护进程）、GAP-011（monaco 代码审阅器）、GAP-049 代码库来源工作空间（Git 集成）、`conversation.shareFile`（协同域）、日程域外延子域、助理域外延子域；**技能域外延子域**（云端 `cloudUpload`/`cloudDownload`/`cloudUninstall` 共 56 条、安全检测 `security` 79 条、分享 `share` 72 条、付费退款 `purchase`+`refund` 7 条）—— 原文自身均标注未接入 / 需网关，复刻当前以桩提示与本地状态位对齐。

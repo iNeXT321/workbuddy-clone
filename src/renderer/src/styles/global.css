@@ -3804,3 +3804,442 @@ body {
   color: var(--text-secondary);
   font-weight: 500;
 }
+
+/* ==================== 技能市场 / 技能管理域（对齐 skills.*） ==================== */
+.skills-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+.sk-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  flex-wrap: wrap;
+}
+.sk-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.sk-header-titles {
+  min-width: 0;
+}
+.sk-header-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+.sk-header-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.sk-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.sk-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.sk-grow {
+  flex: 1;
+}
+.sk-badge {
+  margin-left: 6px;
+  font-size: 11px;
+  background: var(--accent, #3b82f6);
+  color: #fff;
+  border-radius: 8px;
+  padding: 0 5px;
+}
+.sk-badge-installed {
+  font-size: 11px;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.sk-sort {
+  min-width: 92px;
+  height: 26px;
+  font-size: 12px;
+}
+.sk-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.sk-warn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 18px;
+  font-size: 12px;
+  background: rgba(245, 158, 11, 0.12);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.sk-batch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.sk-filters {
+  display: flex;
+  gap: 4px;
+  padding: 8px 18px 0;
+  flex-wrap: wrap;
+}
+.sk-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 18px 40px;
+}
+.sk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.sk-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sk-card.selected {
+  border-color: var(--accent, #3b82f6);
+}
+.sk-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sk-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sk-card-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  cursor: pointer;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 36px;
+}
+.sk-card-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.sk-tag {
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--text-secondary);
+  background: none;
+}
+.sk-tag.warn {
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.5);
+}
+.sk-paid-chip {
+  font-size: 11px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  background: rgba(59, 130, 246, 0.14);
+  color: var(--text-primary);
+}
+.sk-paid-chip.expired {
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--text-secondary);
+}
+.sk-price {
+  font-size: 12px;
+  font-weight: 600;
+}
+.sk-pin {
+  color: #f59e0b;
+  font-size: 12px;
+}
+.sk-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.sk-metric {
+  white-space: nowrap;
+}
+.sk-menu-wrap {
+  position: relative;
+  margin-left: auto;
+}
+.sk-menu {
+  position: absolute;
+  right: 0;
+  top: 24px;
+  z-index: 20;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  min-width: 128px;
+  padding: 4px;
+}
+.sk-menu button {
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.sk-menu button:hover {
+  background: var(--bg-secondary);
+}
+.sk-switch {
+  width: 34px;
+  height: 18px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  position: relative;
+  cursor: pointer;
+  padding: 0;
+}
+.sk-switch.on {
+  background: var(--accent, #3b82f6);
+  border-color: var(--accent, #3b82f6);
+}
+.sk-switch-knob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+.sk-switch.on .sk-switch-knob {
+  transform: translateX(16px);
+}
+.sk-empty {
+  text-align: center;
+  padding: 48px 16px;
+  color: var(--text-secondary);
+}
+.sk-empty-title {
+  font-size: 14px;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+}
+.sk-loadmore {
+  display: block;
+  margin: 14px auto 0;
+}
+.sk-muted {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.sk-group {
+  margin-bottom: 20px;
+}
+.sk-group-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+}
+.sk-dialog {
+  max-width: 520px;
+  width: 92vw;
+}
+.sk-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.sk-radio-row {
+  display: flex;
+  gap: 6px;
+  margin: 10px 0;
+}
+.sk-dialog-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.sk-drop {
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 13px;
+  margin: 10px 0;
+  cursor: pointer;
+}
+.sk-drop.dragging {
+  border-color: var(--accent, #3b82f6);
+  background: rgba(59, 130, 246, 0.08);
+}
+.sk-code-block {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 6px 0;
+  color: var(--text-primary);
+}
+.sk-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.sk-security-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+.sk-risk {
+  font-size: 11px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+}
+.sk-risk.risk-safe {
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.5);
+}
+.sk-risk.risk-low {
+  color: #22c55e;
+  border-color: rgba(34, 197, 94, 0.5);
+}
+.sk-risk.risk-medium {
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.5);
+}
+.sk-risk.risk-high {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.5);
+}
+.sk-overview-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+  flex-wrap: wrap;
+}
+.sk-overview-text {
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.sk-overview-text.clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.sk-drawer-wrap {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.32);
+  display: flex;
+  justify-content: flex-end;
+}
+.sk-drawer {
+  width: 560px;
+  max-width: 92vw;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+.sk-drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.sk-drawer-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+.sk-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px 40px;
+}
+.sk-sync-chip {
+  font-size: 11px;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.sk-picker-list {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  margin: 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sk-picker-item {
+  color: var(--text-primary);
+}
+.sk-share-steps {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 10px 0;
+}

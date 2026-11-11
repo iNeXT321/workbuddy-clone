@@ -493,6 +493,54 @@ MediaPreviewContext     Icons
 - **菜单动作（事实，完整 19 条）**：`viewDetails`=`查看详情`、`viewProfile`=`查看档案`、`editProfile`=`编辑档案`、`copyAsNew`=`复制为新助理`、`hireToProject`=`雇佣到项目`、`bindChannel`=`绑定渠道`、`pin`/`unpin`=`置顶`/`取消置顶`、`pinFailed`/`unpinFailed`、`publishToProject`=`发布到项目`、`pauseColleague`/`resumeColleague`=`暂停助理`/`恢复助理`、`delete`=`删除助理`、`deleteConfirmTitle`=`删除助理？`、`deleteConfirm`=`确定删除「{name}」吗？删除后将无法恢复。`、`deleteConfirmDescription`=`删除后将无法继续指派 {name} 处理任务。此操作需要确认后才会执行。`、`cloneDescriptionFallback`=`{name} 的副本`、`cloneFailed`=`复制助理失败：{message}`。
 - **卡片与标签（事实）**：`cards.*` 9 条（推荐助理三卡名称/标题/描述）、`tag.*` 8 条。
 
+### 5.10 第十一次补证：技能市场 / 技能管理域（`skills.*`，第十四轮监督依据）
+
+> 证据来源：`/tmp/wb-i18n-zh.json`（zh，12,049 条扁平键）与 `/tmp/en-DtOAKogW.js`（en，rolldown 打包模块，正则 `"key":\`value\`` 抠出 12,116 条）。`skills.*` zh **513 条** / en **512 条**（差 `skills.cloudUpload.modal.batchLimitExceeded` —— **原版英文包自身缺该键**，非复刻遗漏）。
+
+**A. 域归属与规模（事实）**
+
+- **命名空间排名（实测）**：settings 1897 > collab 1487 > automation 846 > home 676 > colleagues 573 > **skills 513** > tencentLexiang 360 > myFiles 331 > conversation 314 > office 301。
+- **代码引用统计（排除 i18n 文件）**：colleagues 241、automation 175、home 126、input 89、settings 61、conversation 60、tool 34、progress 14，其余为 **0** → `skills` 是**最大完全未覆盖域**，故选为第十四轮目标。
+- **子域分布（事实）**：security 79、share 72、cloudUpload 47、detail 31、skillhub 26、upload 24、recommend 19、knot 18、batch 14、cloud 14、card 14、toast 12、picker 12、installed 10、batchUninstall 8、installConfirm 7、tab 6、batchUpdate 6、sync 5、cloudDownload 5、search 5、uninstall 4、builtin 4、update 4、cloudUninstall 4、refund 4、autoUpdate 3、tag 3、marketInstall 3、plugins 3、enabledWarning 3、purchase 3、create 2、find 2、delete 2、toggle 2、enterprise 2、l1tab 2 + 大量顶层单键。
+
+**B. 六个 Tab（事实）—— `tab.*`（6 条）**
+
+- `tab.{recommend,skillhub,plugins,knot,enterprise,installed}` = 推荐 / SkillHub / 套件 / Knot / 企业 Skill / 已安装。
+- **主要来源键不对称（易错点）**：仅 `recommend` / `skillhub` / `knot` 有独立 `installed` / `installing` / `install` / `installSuccess` / `installSuccessPlain`；`plugins` / `enterprise` **无** —— 须回落 `skills.card.installed` 等通用键。`searchEmpty` 仅 `recommend` 缺（`recommend` 有独立 `empty`）。
+
+**C. 卡片动作两态（事实）—— `card.*`（14 条）**
+
+- 未安装 → `card.install`；已安装 → `card.{goChat,disable,edit,uninstall,pin|unpin}`（置顶切换）。
+- 指标标签 `card.{downloads,stars,useCount,installCount}` / `detail.metric{Version,UseCount,InstallCount,DownloadCount,StarCount,Author}`。
+
+**D. 启用 / 停用语义（事实）—— `toggle.*`（2 条）+ `enabledWarning.*`（3 条）**
+
+- `toggle.tip.{enable,disable}` 明示这是「对话中自动判断是否使用」的开关，**不是**安装 / 卸载。
+- `enabledWarning` 阈值 **80** 个启用技能时给出提示。
+- `builtin.sort.{score,useCount,installCount,updatedAt}` 四项内置排序。
+
+**E. 同步与安全（事实）**
+
+- **同步五态**：`sync.{localOnly,cloudOnly,synced,localAhead,cloudAhead}`。
+- **风险四档**：`security.result.{safe,low,medium,high}` / `security.riskLevel.{safe,low,medium,high}` + `security.verdict.{white,grey,black}`；`security.riskTooltip.{high,medium,low}`。
+- `autoInstall`「非高风险自动安装」—— 与 `canAutoInstall` 判定一致。
+
+**F. 付费与退款（事实）**
+
+- **付费三态**：`paidTag` / `purchasedChip{Permanent,Monthly,Pending}` / `paidExpiredTag`；`paidPerMonth`（按月）/ `paidPermanent`（无限次）/ `yuan`（元）。
+- `refund` 提示「退款 3 次后将无法再次购买」→ `REFUND_LIMIT = 3`。
+
+**G. 批量与上传（事实）**
+
+- **批量上限**：`batch.limitExceeded` 含 `{limit}`（复刻取 **50**）。
+- **上传策略桩**：`upload.policy.{disabled,notInWhitelist,inBlacklist,invalidMode}`；`upload` 24 条、`cloudUpload` 47 条。
+- **分享闸门（桩）**：`share.gate.{passed,pending,blocked,failed,unsupportedSource,flowPending}`、`share.step.{upload,securityCheck,createLink}`、`share.channel.*`（微信小程序码）。
+
+**H. 桩语义（推论，强）**
+
+- 原文**显式标注自身未接入**的能力：云端上传 / 下载（`cloudUpload` / `cloudDownload` / `cloudUninstall`）、安全检测（科恩实验室评估，`security` 79 条）、分享（微信小程序码，`share` 72 条）、付费与退款（`purchase` / `refund`）。
+- 因此**复刻这些桩文案本身就是对齐**，与第十三轮助理域结论一致。
+
 ## 6. 本基线文件的边界与限制
 
 - 本基线基于**静态产物清单 + 少量入口源码**，未完整反编译 300+ 模块。
@@ -524,13 +572,15 @@ MediaPreviewContext     Icons
 14. ✅ P1：定时任务域（调度模型 + 存储与主进程调度器 + 面板与创建表单 + 运行记录）（第十一轮，GAP-058~061）
 15. ✅ P1：日程 / 日历域（日程模型与摘要/重复/状态推导 + 存储与 IPC + 日历侧栏与月视图 + 创建编辑表单与详情卡与日历设置）（第十二轮，GAP-062~065）
 16. ✅ P1：数字员工 / 助理域（助理模型与职业预设/头像/渠道/配额计算层 + 存储与独占转绑 + 列表卡与创建编辑两步向导 + 详情页三段导航与统计热力图任务表 + 配置页与 IM 三 Tab 与内存记忆）（第十三轮，GAP-066~069）
+17. ✅ P1：技能市场 / 技能管理域（`skills.*` 513 键：六 Tab 推荐/SkillHub/套件/Knot/企业/已安装 + 技能模型与卡片动作/启用语义/同步五态/风险四档/付费三态/批量上限/上传与分享桩计算层 + 存储与批量操作 + 卡片网格与详情抽屉与技能选择器与搜索筛排 + 上传与分享桩）（第十四轮，GAP-070~073）
 
 **待决策（架构级长尾，需范围共识）**
-17. ⏳ P2：monaco 代码变更审阅器（diff/edit/apply）—— 原版 codeEditor chunk 的核心业务是「AI 代码改动审阅」，需在复刻引入 Artifact/代码编辑场景后才成立（GAP-011）
-18. ⏳ P1：IM 渠道（飞书/钉钉/企微）—— 含 `automation.datasource.*`（147 条）与 `automation.modal.wecomBotSource.*`（28 条）（GAP-007）
-19. ⏳ P2：遥测 / 自更新 / 守护进程
-20. ⏳ P2：`conversation.shareFile.*`（119 条，属协同域 collab）与代码库来源工作空间（Git 集成）（GAP-049）
-21. ⏳ P2：日程域外延子域（会议室预约 `create.meetingRoom.*` 约 60 条、腾讯会议在线会议、同步至系统日历 `settings.sync.*` 约 30 条、团队待办叠加 `sidebar.overlayTeamTodos`、第三方日历 `thirdPartyDialog.*` 约 40 条）—— 原文自身均已标注未实现 / 未开放，复刻当前以桩提示对齐
-22. ⏳ P2：助理域外延子域（`createDialog.codeRepo.*` 29 条 GitHub/CNB/工蜂 OAuth、`createDialog.tencentDocs.*` 17 条腾讯文档授权、`createDialog.hireExpert.*` 19 条专家雇佣 Beta/企业智能体、`chat.*` 57 条真实对话实例与多轮编排）—— 原文自身均标注 Beta / 未实现 / 需授权，复刻当前以桩提示对齐
+18. ⏳ P2：monaco 代码变更审阅器（diff/edit/apply）—— 原版 codeEditor chunk 的核心业务是「AI 代码改动审阅」，需在复刻引入 Artifact/代码编辑场景后才成立（GAP-011）
+19. ⏳ P1：IM 渠道（飞书/钉钉/企微）—— 含 `automation.datasource.*`（147 条）与 `automation.modal.wecomBotSource.*`（28 条）（GAP-007）
+20. ⏳ P2：遥测 / 自更新 / 守护进程
+21. ⏳ P2：`conversation.shareFile.*`（119 条，属协同域 collab）与代码库来源工作空间（Git 集成）（GAP-049）
+22. ⏳ P2：日程域外延子域（会议室预约 `create.meetingRoom.*` 约 60 条、腾讯会议在线会议、同步至系统日历 `settings.sync.*` 约 30 条、团队待办叠加 `sidebar.overlayTeamTodos`、第三方日历 `thirdPartyDialog.*` 约 40 条）—— 原文自身均已标注未实现 / 未开放，复刻当前以桩提示对齐
+23. ⏳ P2：助理域外延子域（`createDialog.codeRepo.*` 29 条 GitHub/CNB/工蜂 OAuth、`createDialog.tencentDocs.*` 17 条腾讯文档授权、`createDialog.hireExpert.*` 19 条专家雇佣 Beta/企业智能体、`chat.*` 57 条真实对话实例与多轮编排）—— 原文自身均标注 Beta / 未实现 / 需授权，复刻当前以桩提示对齐
+24. ⏳ P2：技能域外延子域（云端上传/下载 `cloudUpload.*` 47 + `cloudDownload.*` 5 + `cloudUninstall.*` 4、安全检测 `security.*` 79 条科恩实验室评估、分享 `share.*` 72 条微信小程序码、付费退款 `purchase.*` 3 + `refund.*` 4）—— 原文自身均标注未接入 / 需网关，复刻当前以桩提示与本地状态位对齐
 
 > 长尾项建议：先不追求 100% 一致，而是按「核心链路 → 能力外延」逐层推进。每轮由监督角色产出新 GAP，开发角色修复后复检，直至本阶段范围内 0 open。

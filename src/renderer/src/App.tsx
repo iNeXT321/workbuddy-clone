@@ -12,6 +12,7 @@ import TaskSearchOverlay from './components/TaskSearchOverlay'
 import AutomationPanel from './components/AutomationPanel'
 import SchedulePanel from './components/SchedulePanel'
 import ColleaguesPanel from './components/ColleaguesPanel'
+import SkillsPanel from './components/SkillsPanel'
 import Toaster from './components/Toaster'
 
 export default function App() {
@@ -38,6 +39,8 @@ export default function App() {
   const [showSchedule, setShowSchedule] = useState(false)
   // 数字员工 / 助理面板（对齐 colleagues.*）
   const [showColleagues, setShowColleagues] = useState(false)
+  // 技能市场 / 技能管理面板（对齐 skills.*）
+  const [showSkills, setShowSkills] = useState(false)
 
   // 新建工作空间：调主进程真实建目录，失败按 taskStarter.createWorkspace.toast.failed 提示
   const createWorkspace = async () => {
@@ -90,6 +93,7 @@ export default function App() {
         // 这里只让出控制权，不直接关闭，否则一次 Esc 会跳层
         if (showSchedule) return
         if (showColleagues) return
+        if (showSkills) return
         if (showCreateWs) return setShowCreateWs(false)
         if (showPermission) return setShowPermission(false)
         if (showSettings) return setShowSettings(false)
@@ -121,7 +125,7 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showSettings, app.streaming, showTaskSearch, showCreateWs, showAutomation, showSchedule, showColleagues])
+  }, [showSettings, app.streaming, showTaskSearch, showCreateWs, showAutomation, showSchedule, showColleagues, showSkills])
 
   return (
     <div className="app">
@@ -158,6 +162,9 @@ export default function App() {
             </button>
             <button className="icon-btn" onClick={() => setShowColleagues(true)} title={t('colleagues.myColleagues')}>
               ☰
+            </button>
+            <button className="icon-btn" onClick={() => setShowSkills(true)} title={t('skills.entry')}>
+              ✧
             </button>
             <button className="icon-btn" onClick={() => void app.startNewSession()} title={t('sessionSeparator.label')}>
               ✦
@@ -263,6 +270,7 @@ export default function App() {
       {showAutomation && <AutomationPanel onClose={() => setShowAutomation(false)} />}
       {showSchedule && <SchedulePanel onClose={() => setShowSchedule(false)} />}
       {showColleagues && <ColleaguesPanel onClose={() => setShowColleagues(false)} />}
+      {showSkills && <SkillsPanel onClose={() => setShowSkills(false)} />}
       {showCreateWs && (
         <div className="modal-overlay" onClick={() => setShowCreateWs(false)}>
           <div className="modal dialog" onClick={(e) => e.stopPropagation()}>
