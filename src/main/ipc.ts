@@ -15,7 +15,11 @@ import type {
   Conversation,
   Automation,
   Schedule,
-  ScheduleEvent
+  ScheduleEvent,
+  Colleague,
+  ColleagueVisibility,
+  ChannelKind,
+  ChannelState
 } from '../shared/types'
 import { getStore } from './store'
 import { streamChat, classifyError } from './llm'
@@ -524,6 +528,78 @@ export function registerIpcHandlers(): void {
     broadcastEventChanged()
     return next
   })
+
+  // ---------- 数字员工 / 助理（对齐 colleagues.*） ----------
+  const broadcastColleagueChanged = (): void => {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.webContents.send(IPC.colleagueChanged)
+    }
+  }
+
+  ipcMain.handle(IPC.colleagueList, () => getStore().listColleagues())
+  ipcMain.handle(IPC.colleagueGet, (_e, id: string) => getStore().getColleague(id))
+
+  ipcMain.handle(IPC.colleagueSave, (_e, input: Colleague) => {
+    const saved = getStore().saveColleague(input)
+    broadcastColleagueChanged()
+    return saved
+  })
+
+  ipcMain.handle(IPC.colleagueDelete, (_e, id: string) => {
+    const ok = getStore().deleteColleague(id)
+    broadcastColleagueChanged()
+    return ok
+  })
+
+  ipcMain.handle(IPC.colleaguePinned, (_e, id: string, pinned: boolean) => {
+    const next = getStore().setColleaguePinned(id, pinned)
+    if (next) broadcastColleagueChanged()
+    return next
+  })
+
+  ipcMain.handle(IPC.colleaguePaused, (_e, id: string, paused: boolean) => {
+    const next = getStore().setColleaguePaused(id, paused)
+    if (next) broadcastColleagueChanged()
+    return next
+  })
+
+  ipcMain.handle(IPC.colleagueClone, (_e, id: string, patch?: Partial<Colleague>) => {
+    const next = getStore().cloneColleague(id, patch ?? {})
+    if (next) broadcastColleagueChanged()
+    return next
+  })
+
+  ipcMain.handle(IPC.colleaguePublish, (_e, id: string, visibility: ColleagueVisibility) => {
+    const next = getStore().setColleagueVisibility(id, visibility)
+    if (next) broadcastColleagueChanged()
+    return next
+  })
+
+  ipcMain.handle(IPC.colleagueQuota, (_e, plan?: string) => getStore().getColleagueQuota(plan))
+
+  ipcMain.handle(IPC.colleagueBindings, (_e, subject?: string) => getStore().listChannelBindings(subject))
+
+  ipcMain.handle(IPC.colleagueBind, (_e, subject: string, channel: ChannelKind, state?: ChannelState) => {
+    const next = getStore().bindChannel(subject, channel, state ?? 'bound')
+    broadcastColleagueChanged()
+    return next
+  })
+
+  ipcMain.handle(IPC.colleagueUnbind, (_e, subject: string, channel: ChannelKind) => {
+    const next = getStore().unbindChannel(subject, channel)
+    broadcastColleagueChanged()
+    return next
+  })
+
+  ipcMain.handle(IPC.colleagueMemory, (_e, subject: string) => getStore().getColleagueMemory(subject))
+
+  ipcMain.handle(IPC.colleagueMemorySave, (_e, subject: string, enabled: boolean) => {
+    const next = getStore().saveColleagueMemory(subject, enabled)
+    broadcastColleagueChanged()
+    return next
+  })
+
+  ipcMain.handle(IPC.colleagueTasks, (_e, colleagueId?: string) => getStore().listColleagueTasks(colleagueId))
 }
 
 export { activeStreams, pendingApprovals, pendingQuestions, sessionDecisions, launchDecisions }

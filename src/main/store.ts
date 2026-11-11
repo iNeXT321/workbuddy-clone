@@ -10,10 +10,20 @@ import type {
   ConversationOrigin,
   Automation,
   AutomationRun,
-  ScheduleEvent
+  ScheduleEvent,
+  Colleague,
+  ChannelBinding,
+  ChannelKind,
+  ColleagueVisibility,
+  ColleagueStatus,
+  ColleagueMemory,
+  ColleagueQuota,
+  ColleagueTask,
+  ChannelState
 } from '../shared/types'
 import { nextRun } from '../shared/schedule'
 import { DEFAULT_CALENDAR_DEFAULTS } from '../shared/scheduleEvent'
+import { PLAN_LIMITS, DEFAULT_PLAN, isExclusiveChannel, CLOUD_SUBJECT } from '../shared/colleague'
 
 /**
  * 本地存储层 —— 对齐 WorkBuddy 本体的 node:sqlite 用法：
@@ -25,6 +35,16 @@ import { DEFAULT_CALENDAR_DEFAULTS } from '../shared/scheduleEvent'
 export class Store {
   private db: DatabaseSync
   private settingsRow = 'settings'
+  /**
+   * 单调递增毫秒时间戳 —— 保证同一毫秒内多次写入也严格递增。
+   * 用于 updated_at 等参与排序的字段，避免并列导致列表顺序不确定。
+   */
+  private lastTs = 0
+  private nextTimestamp(): number {
+    const t = Date.now()
+    this.lastTs = t > this.lastTs ? t : this.lastTs + 1
+    return this.lastTs
+  }
 
   constructor() {
     const dir = join(app.getPath('userData'), 'db')
@@ -132,6 +152,56 @@ export class Store {
       );
       CREATE INDEX IF NOT EXISTS idx_events_start ON schedule_events(start_at, end_at);
       CREATE INDEX IF NOT EXISTS idx_events_source ON schedule_events(source);
+      -- 数字员工 / 助理（对齐 colleagues.*，573 条）
+      CREATE TABLE IF NOT EXISTS colleagues (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        role TEXT NOT NULL,
+        description TEXT,
+        personality TEXT,
+        responsibilities TEXT,
+        tags TEXT,
+        avatar TEXT,
+        model TEXT,
+        visibility TEXT NOT NULL DEFAULT 'personal',
+        status TEXT NOT NULL DEFAULT 'idle',
+        online INTEGER NOT NULL DEFAULT 1,
+        pinned INTEGER NOT NULL DEFAULT 0,
+        source TEXT,
+        connections TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_colleagues_pinned ON colleagues(pinned);
+      CREATE INDEX IF NOT EXISTS idx_colleagues_status ON colleagues(status);
+      -- 渠道绑定（对齐 bindChannel.*）：subject = 助理 id 或 'cloud'（云助理全局条目）
+      CREATE TABLE IF NOT EXISTS colleague_channels (
+        subject TEXT NOT NULL,
+        channel TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'unbound',
+        bound_at INTEGER,
+        PRIMARY KEY (subject, channel)
+      );
+      CREATE INDEX IF NOT EXISTS idx_channels_channel ON colleague_channels(channel, state);
+      -- 助理内存记忆（对齐 imConfig.memory.*）
+      CREATE TABLE IF NOT EXISTS colleague_memory (
+        subject TEXT PRIMARY KEY,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        updated_at INTEGER NOT NULL
+      );
+      -- 助理任务（对齐 detail.tasks / detail.taskTable.*）
+      CREATE TABLE IF NOT EXISTS colleague_tasks (
+        id TEXT PRIMARY KEY,
+        colleague_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'idle',
+        source TEXT,
+        conversation_id TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_ctasks_colleague ON colleague_tasks(colleague_id);
     `)
 
     // 兼容旧库：老版本 messages 表无 attachments 列，补列（ALTER 幂等失败则忽略）
@@ -517,6 +587,303 @@ export class Store {
       .prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
       .run('calendarDefaults', JSON.stringify(next))
     return next
+  }
+
+  // ---------- 数字员工 / 助理（对齐 colleagues.*） ----------
+
+  private rowToColleague(r: Record<string, unknown>): Colleague {
+    return {
+      id: String(r.id),
+      name: String(r.name),
+      displayName: String(r.display_name),
+      role: String(r.role),
+      description: (r.description as string) ?? undefined,
+      personality: (r.personality as string) ?? undefined,
+      responsibilities: r.responsibilities ? (JSON.parse(String(r.responsibilities)) as string[]) : [],
+      tags: r.tags ? (JSON.parse(String(r.tags)) as string[]) : [],
+      avatar: (r.avatar as string) ?? undefined,
+      model: (r.model as string) ?? undefined,
+      visibility: ((r.visibility as string) ?? 'personal') as ColleagueVisibility,
+      status: ((r.status as string) ?? 'idle') as ColleagueStatus,
+      online: !!r.online,
+      pinned: !!r.pinned,
+      source: ((r.source as string) ?? 'personal') as Colleague['source'],
+      connections: r.connections ? (JSON.parse(String(r.connections)) as string[]) : [],
+      createdAt: Number(r.created_at),
+      updatedAt: Number(r.updated_at)
+    }
+  }
+
+  /**
+   * 列出助理 —— 对齐 `colleagues.*` 列表。
+   * 排序对齐 `action.pin` 语义：置顶优先，其次按最近更新倒序。
+   */
+  listColleagues(): Colleague[] {
+    const rows = this.db
+      .prepare('SELECT * FROM colleagues ORDER BY pinned DESC, updated_at DESC')
+      .all() as Array<Record<string, unknown>>
+    return rows.map((r) => this.rowToColleague(r))
+  }
+
+  getColleague(id: string): Colleague | null {
+    const row = this.db.prepare('SELECT * FROM colleagues WHERE id = ?').get(id) as
+      | Record<string, unknown>
+      | undefined
+    return row ? this.rowToColleague(row) : null
+  }
+
+  /** 名称唯一性 —— 对齐 `createDialog.nameDuplicated`（同 display_name 视为重复） */
+  isColleagueNameTaken(displayName: string, exceptId?: string): boolean {
+    const row = this.db
+      .prepare('SELECT id FROM colleagues WHERE display_name = ?')
+      .get(displayName) as { id: string } | undefined
+    if (!row) return false
+    return exceptId === undefined || row.id !== exceptId
+  }
+
+  /** 新建 / 保存助理 —— 存在同 id 则更新（对齐 `createDialog` / `editDialog`） */
+  saveColleague(input: Colleague): Colleague {
+    // 单调递增时间戳：同一毫秒内多次写入也不会并列，保证
+    // `ORDER BY pinned DESC, updated_at DESC` 的排序确定（否则置顶/取消置顶
+    // 连击时两者 updated_at 相同，列表顺序不确定）。
+    const now = this.nextTimestamp()
+    const existing = this.getColleague(input.id)
+    const vals = [
+      input.name,
+      input.displayName,
+      input.role,
+      input.description ?? null,
+      input.personality ?? null,
+      JSON.stringify(input.responsibilities ?? []),
+      JSON.stringify(input.tags ?? []),
+      input.avatar ?? null,
+      input.model ?? null,
+      input.visibility,
+      input.status,
+      input.online ? 1 : 0,
+      input.pinned ? 1 : 0,
+      input.source ?? 'personal',
+      JSON.stringify(input.connections ?? [])
+    ]
+    if (existing) {
+      this.db
+        .prepare(
+          `UPDATE colleagues SET name=?, display_name=?, role=?, description=?, personality=?,
+           responsibilities=?, tags=?, avatar=?, model=?, visibility=?, status=?, online=?,
+           pinned=?, source=?, connections=?, updated_at=? WHERE id=?`
+        )
+        .run(...vals, now, input.id)
+    } else {
+      this.db
+        .prepare(
+          `INSERT INTO colleagues (name, display_name, role, description, personality,
+           responsibilities, tags, avatar, model, visibility, status, online, pinned, source,
+           connections, id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        )
+        .run(...vals, input.id, input.createdAt ?? now, now)
+    }
+    return this.getColleague(input.id)!
+  }
+
+  /**
+   * 删除助理 —— 对齐 `action.delete*`。
+   * 级联清理该助理的渠道绑定 / 内存记忆 / 任务（对齐「删除后无法继续指派任务」）。
+   */
+  deleteColleague(id: string): boolean {
+    if (!this.getColleague(id)) return false
+    this.db.prepare('DELETE FROM colleagues WHERE id = ?').run(id)
+    this.db.prepare('DELETE FROM colleague_channels WHERE subject = ?').run(id)
+    this.db.prepare('DELETE FROM colleague_memory WHERE subject = ?').run(id)
+    this.db.prepare('DELETE FROM colleague_tasks WHERE colleague_id = ?').run(id)
+    return true
+  }
+
+  /** 置顶 / 取消置顶 —— 对齐 `action.pin` / `action.unpin` */
+  setColleaguePinned(id: string, pinned: boolean): Colleague | null {
+    const c = this.getColleague(id)
+    if (!c) return null
+    return this.saveColleague({ ...c, pinned })
+  }
+
+  /** 暂停 / 恢复 —— 对齐 `action.pauseColleague` / `action.resumeColleague`（status 转 idle/working） */
+  setColleaguePaused(id: string, paused: boolean): Colleague | null {
+    const c = this.getColleague(id)
+    if (!c) return null
+    return this.saveColleague({ ...c, status: paused ? 'idle' : 'working', online: !paused })
+  }
+
+  /** 发布 / 改可见范围 —— 对齐 `publishDialog.*` + `action.publishToProject` */
+  setColleagueVisibility(id: string, visibility: ColleagueVisibility): Colleague | null {
+    const c = this.getColleague(id)
+    if (!c) return null
+    return this.saveColleague({ ...c, visibility })
+  }
+
+  /** 复制为新助理 —— 对齐 `action.copyAsNew`（昵称沿用、名称加「副本」语义由 UI 拼装） */
+  cloneColleague(id: string, patch: Partial<Colleague> = {}): Colleague | null {
+    const src = this.getColleague(id)
+    if (!src) return null
+    return this.saveColleague({
+      ...src,
+      id: `col_${Math.random().toString(36).slice(2, 10)}`,
+      pinned: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      ...patch
+    })
+  }
+
+  /** 配额 —— 对齐 `quotaLimit.*`（{limit} 由套餐决定，used 为当前助理数） */
+  getColleagueQuota(plan: string = DEFAULT_PLAN): ColleagueQuota {
+    const row = this.db.prepare('SELECT COUNT(*) AS n FROM colleagues').get() as { n: number }
+    return { plan, limit: PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] ?? PLAN_LIMITS[DEFAULT_PLAN], used: Number(row.n) }
+  }
+
+  // ---------- 渠道绑定（对齐 bindChannel.*） ----------
+
+  listChannelBindings(subject?: string): ChannelBinding[] {
+    const rows = (
+      subject
+        ? this.db.prepare('SELECT * FROM colleague_channels WHERE subject = ?').all(subject)
+        : this.db.prepare('SELECT * FROM colleague_channels').all()
+    ) as Array<Record<string, unknown>>
+    return rows.map((r) => ({
+      subject: String(r.subject),
+      channel: String(r.channel) as ChannelKind,
+      state: (String(r.state) as ChannelBinding['state']) ?? 'unbound',
+      boundAt: r.bound_at === null || r.bound_at === undefined ? undefined : Number(r.bound_at)
+    }))
+  }
+
+  /**
+   * 绑定渠道 —— 对齐 `bindChannel.*`。
+   * 独占规则（`bindChannel.colleague.subtitle`）：除小程序外，同一渠道同一时刻只能被 1 个主体占用；
+   * 已有其他主体占用时，先把旧主体的该渠道置回 unbound（相当于「转绑」）。
+   * 小程序是全局共享，不做占用清理。
+   */
+  bindChannel(subject: string, channel: ChannelKind, state: ChannelState = 'bound'): ChannelBinding[] {
+    const now = Date.now()
+    if (state === 'bound' && isExclusiveChannel(channel)) {
+      this.db
+        .prepare('UPDATE colleague_channels SET state = ?, bound_at = NULL WHERE channel = ? AND subject <> ?')
+        .run('unbound', channel, subject)
+    }
+    this.db
+      .prepare(
+        `INSERT INTO colleague_channels (subject, channel, state, bound_at) VALUES (?,?,?,?)
+         ON CONFLICT(subject, channel) DO UPDATE SET state = excluded.state, bound_at = excluded.bound_at`
+      )
+      .run(subject, channel, state, state === 'bound' ? now : null)
+    return this.listChannelBindings(subject)
+  }
+
+  unbindChannel(subject: string, channel: ChannelKind): ChannelBinding[] {
+    return this.bindChannel(subject, channel, 'unbound')
+  }
+
+  /** 渠道当前占用主体 —— 对齐「同一渠道同一时间只能由 1 位助理占用」 */
+  channelOwner(channel: ChannelKind): string | null {
+    const row = this.db
+      .prepare("SELECT subject FROM colleague_channels WHERE channel = ? AND state = 'bound'")
+      .get(channel) as { subject: string } | undefined
+    return row ? row.subject : null
+  }
+
+  /** 是否已连接 IM（云助理状态徽标用）—— 对齐 `dashboard.imConnected` */
+  hasAnyChannelBound(subject?: string): boolean {
+    const sql = subject
+      ? "SELECT COUNT(*) AS n FROM colleague_channels WHERE state = 'bound' AND subject = ?"
+      : "SELECT COUNT(*) AS n FROM colleague_channels WHERE state = 'bound'"
+    const row = (subject ? this.db.prepare(sql).get(subject) : this.db.prepare(sql).get()) as { n: number }
+    return Number(row.n) > 0
+  }
+
+  // ---------- 内存记忆（对齐 imConfig.memory.*） ----------
+
+  /** 读取内存记忆开关 —— 默认开启（对齐 `switch.status`「默认开启」） */
+  getColleagueMemory(subject: string): ColleagueMemory {
+    const row = this.db.prepare('SELECT * FROM colleague_memory WHERE subject = ?').get(subject) as
+      | Record<string, unknown>
+      | undefined
+    if (!row) return { subject, enabled: true, updatedAt: 0 }
+    return { subject, enabled: !!row.enabled, updatedAt: Number(row.updated_at) }
+  }
+
+  saveColleagueMemory(subject: string, enabled: boolean): ColleagueMemory {
+    const now = Date.now()
+    this.db
+      .prepare(
+        `INSERT INTO colleague_memory (subject, enabled, updated_at) VALUES (?,?,?)
+         ON CONFLICT(subject) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at`
+      )
+      .run(subject, enabled ? 1 : 0, now)
+    return { subject, enabled, updatedAt: now }
+  }
+
+  /** 默认主体：assistant（云助理）由 UI 显式传 'cloud'；此处提供便捷读取 */
+  getMemoryForCloud(): ColleagueMemory {
+    return this.getColleagueMemory(CLOUD_SUBJECT)
+  }
+
+  // ---------- 助理任务（对齐 detail.tasks / detail.taskTable.*） ----------
+
+  listColleagueTasks(colleagueId?: string): ColleagueTask[] {
+    const rows = (
+      colleagueId
+        ? this.db
+            .prepare('SELECT * FROM colleague_tasks WHERE colleague_id = ? ORDER BY created_at DESC')
+            .all(colleagueId)
+        : this.db.prepare('SELECT * FROM colleague_tasks ORDER BY created_at DESC').all()
+    ) as Array<Record<string, unknown>>
+    return rows.map((r) => ({
+      id: String(r.id),
+      colleagueId: String(r.colleague_id),
+      name: String(r.name),
+      status: String(r.status),
+      source: (r.source as string) ?? undefined,
+      conversationId: (r.conversation_id as string) ?? undefined,
+      createdAt: Number(r.created_at),
+      updatedAt: Number(r.updated_at)
+    }))
+  }
+
+  saveColleagueTask(input: {
+    id: string
+    colleagueId: string
+    name: string
+    status: string
+    source?: string
+    conversationId?: string
+    createdAt?: number
+  }): ColleagueTask {
+    const now = Date.now()
+    this.db
+      .prepare(
+        `INSERT INTO colleague_tasks (id, colleague_id, name, status, source, conversation_id, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, status = excluded.status,
+           source = excluded.source, conversation_id = excluded.conversation_id, updated_at = excluded.updated_at`
+      )
+      .run(
+        input.id,
+        input.colleagueId,
+        input.name,
+        input.status,
+        input.source ?? null,
+        input.conversationId ?? null,
+        input.createdAt ?? now,
+        now
+      )
+    return this.listColleagueTasks(input.colleagueId).find((t) => t.id === input.id)!
+  }
+
+  deleteColleagueTask(id: string): boolean {
+    const before = this.db.prepare('SELECT id FROM colleague_tasks WHERE id = ?').get(id) as
+      | { id: string }
+      | undefined
+    if (!before) return false
+    this.db.prepare('DELETE FROM colleague_tasks WHERE id = ?').run(id)
+    return true
   }
 
   // ---------- 定时任务（对齐 automation.*） ----------

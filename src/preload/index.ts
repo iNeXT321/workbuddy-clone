@@ -14,7 +14,15 @@ import type {
   Automation,
   AutomationRun,
   Schedule,
-  ScheduleEvent
+  ScheduleEvent,
+  Colleague,
+  ColleagueVisibility,
+  ChannelKind,
+  ChannelState,
+  ChannelBinding,
+  ColleagueMemory,
+  ColleagueQuota,
+  ColleagueTask
 } from '../shared/types'
 import type { CalendarDefaults } from '../shared/scheduleEvent'
 
@@ -98,6 +106,24 @@ export interface WorkbuddyBridge {
   eventSettings(): Promise<CalendarDefaults>
   eventSettingsSave(patch: Partial<CalendarDefaults>): Promise<CalendarDefaults>
   onEventChanged(cb: () => void): () => void
+
+  // 数字员工 / 助理（对齐 colleagues.*）
+  colleagueList(): Promise<Colleague[]>
+  colleagueGet(id: string): Promise<Colleague | null>
+  colleagueSave(input: Colleague): Promise<Colleague>
+  colleagueDelete(id: string): Promise<boolean>
+  colleaguePinned(id: string, pinned: boolean): Promise<Colleague | null>
+  colleaguePaused(id: string, paused: boolean): Promise<Colleague | null>
+  colleagueClone(id: string, patch?: Partial<Colleague>): Promise<Colleague | null>
+  colleaguePublish(id: string, visibility: ColleagueVisibility): Promise<Colleague | null>
+  colleagueQuota(plan?: string): Promise<ColleagueQuota>
+  colleagueBindings(subject?: string): Promise<ChannelBinding[]>
+  colleagueBind(subject: string, channel: ChannelKind, state?: ChannelState): Promise<ChannelBinding[]>
+  colleagueUnbind(subject: string, channel: ChannelKind): Promise<ChannelBinding[]>
+  colleagueMemory(subject: string): Promise<ColleagueMemory>
+  colleagueMemorySave(subject: string, enabled: boolean): Promise<ColleagueMemory>
+  colleagueTasks(colleagueId?: string): Promise<ColleagueTask[]>
+  onColleagueChanged(cb: () => void): () => void
 
   // 内置终端
   termOpen(conversationId: string): Promise<{ ok: boolean; shell?: string }>
@@ -183,6 +209,27 @@ const bridge: WorkbuddyBridge = {
     const listener = () => cb()
     ipcRenderer.on(IPC.eventChanged, listener)
     return () => ipcRenderer.removeListener(IPC.eventChanged, listener)
+  },
+
+  colleagueList: () => ipcRenderer.invoke(IPC.colleagueList),
+  colleagueGet: (id) => ipcRenderer.invoke(IPC.colleagueGet, id),
+  colleagueSave: (input) => ipcRenderer.invoke(IPC.colleagueSave, input),
+  colleagueDelete: (id) => ipcRenderer.invoke(IPC.colleagueDelete, id),
+  colleaguePinned: (id, pinned) => ipcRenderer.invoke(IPC.colleaguePinned, id, pinned),
+  colleaguePaused: (id, paused) => ipcRenderer.invoke(IPC.colleaguePaused, id, paused),
+  colleagueClone: (id, patch) => ipcRenderer.invoke(IPC.colleagueClone, id, patch),
+  colleaguePublish: (id, visibility) => ipcRenderer.invoke(IPC.colleaguePublish, id, visibility),
+  colleagueQuota: (plan) => ipcRenderer.invoke(IPC.colleagueQuota, plan),
+  colleagueBindings: (subject) => ipcRenderer.invoke(IPC.colleagueBindings, subject),
+  colleagueBind: (subject, channel, state) => ipcRenderer.invoke(IPC.colleagueBind, subject, channel, state),
+  colleagueUnbind: (subject, channel) => ipcRenderer.invoke(IPC.colleagueUnbind, subject, channel),
+  colleagueMemory: (subject) => ipcRenderer.invoke(IPC.colleagueMemory, subject),
+  colleagueMemorySave: (subject, enabled) => ipcRenderer.invoke(IPC.colleagueMemorySave, subject, enabled),
+  colleagueTasks: (colleagueId) => ipcRenderer.invoke(IPC.colleagueTasks, colleagueId),
+  onColleagueChanged: (cb) => {
+    const listener = () => cb()
+    ipcRenderer.on(IPC.colleagueChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.colleagueChanged, listener)
   },
 
   termOpen: (conversationId) => ipcRenderer.invoke(IPC.termOpen, conversationId),

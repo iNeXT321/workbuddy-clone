@@ -427,6 +427,72 @@ MediaPreviewContext     Icons
 - **星期（事实）**：`weekday.0`~`6`=`周日`~`周六`（与 JS `getDay()` 同序）。
 - **其余子域（事实，范围外）**：`attachment.permission.*`（8 条）、`feed.*`（4 条，含 `unavailableTag`=`暂未接入`）、`suggestion.*`（6 条，含 `unavailable`=`行动项建议接口暂未接入`）、`detail.notes/linkedMeeting/executionLink`、`subscriptionPeek.*`、`contextMenu.*`、`drag.*`、`miniList`。
 
+### 5.9 第十次补证：数字员工 / 助理域（colleagues.*，第十三轮监督依据）
+
+证据来源：i18n 词典 `colleagues.*` 命名空间（**573 条**，zh 权威；en 包亦 573 条**全覆盖**）。该域在复刻体中原为**完全空白**，故本轮同第十一 / 十二轮，为「从 0 建域」。
+
+> ⚠️ 命名空间归属提示：`colleagues` 是**顶层独立命名空间**（非 `home.*` 子域），共 573 条。子域分布：createDialog 204、detail 98、bindChannel 72、chat 57、dashboard 32、imConfig 25、action 19、publishDialog 12、quotaLimit 11、cards 9、conversation 9、tag 8、editDialog 4，加顶层 19 条。
+
+**A. 总览与入口（事实）—— 顶层 19 条**
+
+- **入口（事实）**：`myColleagues`=`云助理`（顶栏入口 title）、`title`=`助理协作空间`（面板标题）、`subtitle`=`选择一位助理加入任务，让专业角色帮你完成研究、分析和内容创作。`
+- **列表（事实）**：`countLabel`=`共 {count} 位助理`、`empty`=`暂无可用助理，创建或获取授权后会显示在这里。`、`loadError`=`助理列表加载失败，请稍后重试。`
+- **两套状态命名（事实，易错点）**：列表卡用 `statusAvailable`=`工作中` / `statusIdle`=`已停用`；详情页用 `detail.colleagueStatus.{working,idle,abnormal}`=`工作中`/`空闲`/`异常` —— **同一语义两套文案**，不可混用（列表卡「已停用」≠ 详情「空闲」）。
+- **其余（事实）**：`skillsLabel`=`助理能力标签`、`usageLabel`=`用量 {usage}`、`create`=`创建助理`、`moreActions`=`更多操作`、`myColleaguesDescription`=`常用助理已准备就绪，可在后续迭代接入创建与召唤能力。`
+
+**B. 创建 / 编辑向导（事实，204 条）—— `createDialog.*` / `editDialog.*`**
+
+- **两步结构（事实）**：`progressLabel`=`创建助理进度`、`steps.basic`/`steps.config`=`基本信息`/`能力配置`、`advancedConfig`=`能力配置（高级）`、`advancedConfigHint`=`专家/仓库/资料库/模型`；`createDialog.next`/`previous`=`下一步`/`上一步`、`finish`=`创建同事`；编辑态 `editDialog.title`=`编辑档案`、`editDialog.finish`=`保存`。
+- **★ 必填校验（事实，易错点）**：`requiredError`=`请先填写助理昵称、助理简介和名称。` —— **三项并列必填**（昵称 `roleNickname` / 简介 `description` / 名称 `name`），故「名称」字段**不标（可选）**；`optional`=`（可选）` 另有用于他处。
+- **★ 重名校验（事实）**：`nameDuplicated`=`名称已存在，请换一个名称`；`nameUniqueServiceUnavailable`=`名称校验暂不可用，请稍后重试`；另有一整族**内容审核**键 `moderationChecking`=`正在检测...`、`moderationBlocked.{name,roleNickname,description}`、`moderationCombinedBlocked`、`moderationServiceUnavailable` —— 原文接入内容审核服务，复刻以最简校验对齐。
+- **职业预设（事实，21 项 + 自定义）**：`rolePresetLabel`=`助理职业快捷选项`、`customRole`=`自定义`、`customRoleDesc`=`自由定义职称与简介`、`viewMore`/`viewLess`=`查看更多`/`收起`；`rolePreset.*` 共 **21 项**（含 industryResearcher 行业研究员、contentCreator 内容创作专员、dataAnalyst 数据分析员、frontendEngineer 前端开发工程师、stockResearcher 股票研究员、xiaohongshuOps 小红书运营专员、qa 等）。首屏折叠展示「自定义 + 前 8 项」。
+- **头像（事实，20 张 / 每页 8）**：`avatar`=`头像`、`avatarHint`=`点击换头像（{count} 张候选），也可自定义上传`、`avatar.preset01`~`preset20`（20 条）、`moreAvatar`/`previousAvatar`=`更多头像`/`上一组头像`、`viewLessAvatar`=`收起头像`；上传族 `avatarUpload`/`avatarReplace`/`avatarUploadShort`=`上传`、`avatarUploadUnsupported`=`当前环境暂不支持上传自定义头像。`（**桩**）、`avatarUploadInvalidType`=`请上传 PNG、JPG、WebP 或 GIF 图片。`、`avatarUploadTooLarge`=`图片不能超过 5 MB。`
+- **能力配置第二步（事实）**：`connectionTitle`=`助理可以连接哪些数据？`、`connectionIntro`、`connectionHint`=`可选 · 点击 Source 立刻配置`、`connection.repo`=`连接仓库`；`responsibilities`=`常用职责`（`responsibility.{analysis,planning,report,review}`=`需求分析`/`方案拆解`/`报告生成`/`质量评审`）；`personality`=`协作风格`；`model.*`（`headerTitle`/`auto`=`自动`/`empty`=`暂无可选模型`）。
+- **★ 代码仓库 OAuth（事实，原文自认需授权）**：`codeRepo.*` 29 条 —— `provider.{github,cnb,gongfeng}`=`GitHub`/`CNB`/`工蜂`、`connect`=`连接`、`connectProvider`=`连接 {name}`、`oauthDesc`=`授权后，助理可以读取你在 {name} 中可访问的仓库列表。`、`revokeAuth`=`取消授权`、`authTimeout`=`授权超时，请完成授权后重试。`、`githubSelectRepos`/`waitingRepoAuth`、`selectedCount`=`已选择 {count} 个仓库`、`cnbTokenPlaceholder`=`请输入 CNB Access Token`。复刻以**连接仓库**按钮 + `codeRepo.empty`=`暂无可选择仓库` 桩对齐。
+- **★ 腾讯文档授权（事实，原文自认需授权）**：`tencentDocs.*` 17 条，含 `empty`=`暂无可选择文件`。复刻以知识库 chip（`knowledgeBase`/`knowledgeBaseDesc`）桩对齐。
+- **★ 雇佣专家（事实，原文标注 Beta + 企业智能体未支持）**：`hireExpert.*` 19 条 —— `entryTitle`、`entryDesc`、`beta`=`Beta`、`emptyTitle`=`暂无匹配结果`、`emptyDesc`、`enterpriseEmptyTitle`=`暂无企业智能体`、`enterpriseEmptyDesc`=`当前企业下暂无已发布的企业智能体。`、`enterpriseLoadErrorTitle`=`企业智能体加载失败`、`enterpriseUnsupported`（企业智能体未支持，**桩**）；另 `createDialog.enterpriseCloneUnsupported`=`当前环境暂不支持基于企业智能体创建助理。`（**桩**）。
+- **其余（事实）**：`fillExample`=`填充示例`、`aiWrite`=`AI 写`、`voice`=`语音`、`moderationChecking`、`displayName` 族。
+
+**C. 详情页（事实，98 条）—— `detail.*`**
+
+- **三段导航（事实）**：`detail.back`=`返回`、`detail.nav.{home,tasks,memory}`=`首页`/`对话任务`/`记忆`、`detail.startChat`=`发起对话`、`detail.personal`=`个人分身`。
+- **三态状态（事实）**：`detail.colleagueStatus.{working,idle,abnormal}`=`工作中`/`空闲`/`异常`；`statusTitle`=`状态`、`statusBannerLabel`=`助理任务状态`、`processing`=`正在处理`、`readyForTask`=`空闲中，等待派单`、`taskExecution`=`任务执行`、`idleNoTask`=`空闲中 · 暂无进行中的任务`、`imStatus`=`IM 状态`、`notBound`=`未绑定`、`personalVisible`=`个人`、`lastActive`=`最近活跃`、`lastActiveFallback`=`2 小时前`。
+- **统计指标（事实，4 项）**：`metricsLabel`=`任务统计`、`metric.total`=`总委派任务`（`totalDesc`=`含项目与个人委派`）、`inProgress`=`进行中`（`inProgressDesc`=`当前由该助理跟进`）、`completed`=`已完成`（`completedDesc`=`最近 30 天完成数`）、`completionRate`=`完成率`（`completionRateDesc`=`基于历史任务统计`）。
+- **热力图（事实）**：`activityHeatmap`=`近一年活跃热力图`、`activityLevel`=`活跃等级`、`activityTotal`=`近一年累计 {count} 次活跃`、`less`/`more`=`少`/`多` → **近一年 = 52 周 × 7 = 364 格**。
+- **基本信息（事实）**：`daysOnDuty`=`上岗天数`、`taskCount`=`任务数`、`taskConfig`=`任务配置`、`taskOverviewV2`=`任务概览`、`taskPageDesc`=`与 {name} 的历史对话任务 · 可按计划自动执行，也可随时手动触发。`。
+- **任务表（事实，6 列）**：`taskTable.{id,name,source,status,createdAt,action}`=`ID`/`名称`/`来源`/`状态`/`创建时间`/`操作`；`untitledName`=`未命名任务`、`openHistoryAria`=`打开任务历史：{name}`、`openHistoryFailed`=`无法打开该任务历史，请刷新后重试`；`taskSourceCloud`=`云端`。
+- **连接与来源（事实）**：`connectRepo`=`连接仓库`、`connectKnowledgeBase`=`连接知识库`、`selectRepo`=`选择仓库`、`hiredExpert`=`雇佣专家`、`notConfigured`=`未配置`、`repoCnb`=`CNB`、`tencentDocs`=`腾讯文档`、`productManager`=`产品经理`。
+- **记忆页（事实）**：`memoryPageDesc`=`{name} 在协作中沉淀的技能与经验，会持续积累。`、`memoryEmpty`=`暂无记忆更新记录`。
+
+**D. 渠道绑定与配置（事实，72 条）—— `bindChannel.*`**
+
+- **分区（事实）**：`section.{profile,channel,permission,usage}`、`section.comingSoon`=`下期`（用量项标注「下期」）。
+- **★ 独占规则（事实，核心一致性约束）**：`channel.bind`/`bound`/`rebind`/`unbind`=`绑定`/`已绑定`/`重扫`/`解绑`；`imConfig.colleague.subtitle`=`每位助理可绑定专属渠道，独立接收 / 回复消息。**除小程序外，同一渠道同一时间只能由 1 位助理占用。**` → **非 `wechatMini` 渠道为独占**，绑定新占用者时旧占用者自动转未绑定（转绑）。
+- **渠道族（事实，7 类）**：企业微信、微信 bot（`wechatBot.boundTo`=`当前绑定：{name}`、`bindFailed`/`unbindConfirm`/`unbindFailed`）、飞书、QQ（`qq.bindTokenLabel`=`绑定口令：`、`bindSuccess`=`创建成功，已绑定机器人`、`unbindConfirm`/`bindFailed`/`unbindFailed`）、云助理·微信小程序（`wechatMini.unbound`=`未绑定`）等。
+- **★ 桩（事实）**：`placeholder`（扫码/授权链路未接入，**桩**）、`wechatBot.scanDesc`（扫码描述）→ 复刻以「扫码描述 · placeholder」桩对齐。
+- **权限与可见（事实，三档）**：`permission.{personal,project,public}`；`overlay`/`permission.online.{title,desc}`（助理在线开关）。
+
+**E. 发布对话框（事实，12 条）—— `publishDialog.*`**
+
+- **三档可见范围（事实）**：`option.{personal,project,public}` 名称逐一为 `个人分身`/`发布到项目`/`公开`；`submit.{personal,project,public}`=`保持个人`/`发布到项目`/`提交审核` → **提交按钮文案随档位切换**（易错点：非三个固定按钮）。
+
+**F. 配额（事实，11 条）—— `quotaLimit.*`**
+
+- **套餐上限（事实）**：`title`=`助理数量已达上限`、`upgrade`=`去升级`、`confirm`=`好的`、`unsupported`=`当前企业不支持个人助理能力。`；内容模板 `trialContent`/`youthContent`/`standardContent`/`advancedContent`/`flagshipContent`/`enterpriseContent`/`defaultContent` —— **`{limit}` = 套餐上限**，标准版文案含 `最多可创建 {limit} 个助理`。
+- **推论（强）**：套餐为 trial / youth / standard / advanced / flagship / enterprise 六档，上限各异（复刻取 1/2/3/5/10/50）；当前默认 `standard`=3。
+
+**G. 云助理仪表盘与 IM 配置（事实，32 + 25 条）—— `dashboard.*` / `imConfig.*`**
+
+- **仪表盘（事实）**：`statusLabel`=`云助理运行状态`、`deviceOnline`=`2 设备在线`、`workingCount`=`{count} 助理工作中`、`assistantTitle`=`我的云助理`、`welcomeTitle`=`Hi，欢迎使用云助理`、`cloudTag`=`☁ 云端`、`assistantTag`=`助理`、`online`=`在线`、`modeLegacy`/`modeCloud`=`本地`/`云端`、`modeSwitchLabel`=`切换云助理模式`、`chat`=`对话`、`countStatus`=`{count} 位 · {working} 工作中`、`filterAll`/`filterAbnormal`=`全部`/`异常`、`filterLabel`=`筛选助理状态`、`recommended`=`推荐助理`、`standby`=`待命`、`idleAssignable`=`空闲中，可派单`、`imDisconnected`/`imConnected`=`未连接 IM`/`已连接 IM`、`proLabel`=`Pro`、`createTitle`/`createDesc`=`创建助理`/`组建你的团队`、`chatGuide.{description,skip,start}`。
+- **IM 三 Tab（事实）**：`imConfig.tab.{bindChannel,assistant,colleague,memory}`=`绑定渠道`/`云助理 IM`/`助理 IM`/`内存记忆`；`assistant.heading`=`微信小程序绑定 · 云助理`、`assistant.subtitle`=`绑定云助理的微信小程序，扫码后将自动关联你的全部助理，统一在小程序里接收 / 回复消息`；`colleague.switchLabel`=`为谁配置 IM`、`colleague.subtitle`（独占规则）；**云助理 IM 主体为全局单条**（复刻固定 `subject='cloud'`）。
+- **内存记忆（事实）**：`memory.heading`=`内存记忆`、`memory.subtitle`=`为每位助理独立配置长期记忆，开启后会在对话中使用你的记忆内容`、`memory.switch.name`=`内存记忆`、`memory.switch.desc`=`默认开启。关闭后，该助理后续对话将不再注入你的长期记忆`、`memory.switch.status`=`默认开启` → **默认开启**；`memory.error.{unsupported,saveFailed}`。
+- **推论（强）**：原文**显式标注自身未实现 / 未接入的部分**（自定义头像上传、专家雇佣 Beta、企业智能体、腾讯文档与代码仓库授权、IM 扫码绑定）。因此「复刻这些桩文案」**本身就是对齐**，而非偷工。
+
+**H. 动作与卡片（事实，19 + 9 + 8 条）—— `action.*` / `cards.*` / `tag.*`**
+
+- **菜单动作（事实，完整 19 条）**：`viewDetails`=`查看详情`、`viewProfile`=`查看档案`、`editProfile`=`编辑档案`、`copyAsNew`=`复制为新助理`、`hireToProject`=`雇佣到项目`、`bindChannel`=`绑定渠道`、`pin`/`unpin`=`置顶`/`取消置顶`、`pinFailed`/`unpinFailed`、`publishToProject`=`发布到项目`、`pauseColleague`/`resumeColleague`=`暂停助理`/`恢复助理`、`delete`=`删除助理`、`deleteConfirmTitle`=`删除助理？`、`deleteConfirm`=`确定删除「{name}」吗？删除后将无法恢复。`、`deleteConfirmDescription`=`删除后将无法继续指派 {name} 处理任务。此操作需要确认后才会执行。`、`cloneDescriptionFallback`=`{name} 的副本`、`cloneFailed`=`复制助理失败：{message}`。
+- **卡片与标签（事实）**：`cards.*` 9 条（推荐助理三卡名称/标题/描述）、`tag.*` 8 条。
+
 ## 6. 本基线文件的边界与限制
 
 - 本基线基于**静态产物清单 + 少量入口源码**，未完整反编译 300+ 模块。
@@ -457,12 +523,14 @@ MediaPreviewContext     Icons
 13. ✅ P1/P2：会话状态角标 + 工作空间分组 + 全局任务搜索 + 来源标记 + 运行中关窗确认（第十轮，GAP-053~057）
 14. ✅ P1：定时任务域（调度模型 + 存储与主进程调度器 + 面板与创建表单 + 运行记录）（第十一轮，GAP-058~061）
 15. ✅ P1：日程 / 日历域（日程模型与摘要/重复/状态推导 + 存储与 IPC + 日历侧栏与月视图 + 创建编辑表单与详情卡与日历设置）（第十二轮，GAP-062~065）
+16. ✅ P1：数字员工 / 助理域（助理模型与职业预设/头像/渠道/配额计算层 + 存储与独占转绑 + 列表卡与创建编辑两步向导 + 详情页三段导航与统计热力图任务表 + 配置页与 IM 三 Tab 与内存记忆）（第十三轮，GAP-066~069）
 
 **待决策（架构级长尾，需范围共识）**
-16. ⏳ P2：monaco 代码变更审阅器（diff/edit/apply）—— 原版 codeEditor chunk 的核心业务是「AI 代码改动审阅」，需在复刻引入 Artifact/代码编辑场景后才成立（GAP-011）
-17. ⏳ P1：IM 渠道（飞书/钉钉/企微）—— 含 `automation.datasource.*`（147 条）与 `automation.modal.wecomBotSource.*`（28 条）（GAP-007）
-18. ⏳ P2：遥测 / 自更新 / 守护进程
-19. ⏳ P2：`conversation.shareFile.*`（119 条，属协同域 collab）与代码库来源工作空间（Git 集成）（GAP-049）
-20. ⏳ P2：日程域外延子域（会议室预约 `create.meetingRoom.*` 约 60 条、腾讯会议在线会议、同步至系统日历 `settings.sync.*` 约 30 条、团队待办叠加 `sidebar.overlayTeamTodos`、第三方日历 `thirdPartyDialog.*` 约 40 条）—— 原文自身均已标注未实现 / 未开放，复刻当前以桩提示对齐
+17. ⏳ P2：monaco 代码变更审阅器（diff/edit/apply）—— 原版 codeEditor chunk 的核心业务是「AI 代码改动审阅」，需在复刻引入 Artifact/代码编辑场景后才成立（GAP-011）
+18. ⏳ P1：IM 渠道（飞书/钉钉/企微）—— 含 `automation.datasource.*`（147 条）与 `automation.modal.wecomBotSource.*`（28 条）（GAP-007）
+19. ⏳ P2：遥测 / 自更新 / 守护进程
+20. ⏳ P2：`conversation.shareFile.*`（119 条，属协同域 collab）与代码库来源工作空间（Git 集成）（GAP-049）
+21. ⏳ P2：日程域外延子域（会议室预约 `create.meetingRoom.*` 约 60 条、腾讯会议在线会议、同步至系统日历 `settings.sync.*` 约 30 条、团队待办叠加 `sidebar.overlayTeamTodos`、第三方日历 `thirdPartyDialog.*` 约 40 条）—— 原文自身均已标注未实现 / 未开放，复刻当前以桩提示对齐
+22. ⏳ P2：助理域外延子域（`createDialog.codeRepo.*` 29 条 GitHub/CNB/工蜂 OAuth、`createDialog.tencentDocs.*` 17 条腾讯文档授权、`createDialog.hireExpert.*` 19 条专家雇佣 Beta/企业智能体、`chat.*` 57 条真实对话实例与多轮编排）—— 原文自身均标注 Beta / 未实现 / 需授权，复刻当前以桩提示对齐
 
 > 长尾项建议：先不追求 100% 一致，而是按「核心链路 → 能力外延」逐层推进。每轮由监督角色产出新 GAP，开发角色修复后复检，直至本阶段范围内 0 open。

@@ -160,6 +160,95 @@ export type ConversationStatus = 'failed' | 'pending' | 'unread' | 'working'
 /** 任务来源端 —— 对齐 `conversation.origin.*`：web / workbuddyApp / workbuddyMp */
 export type ConversationOrigin = 'web' | 'workbuddyApp' | 'workbuddyMp'
 
+// ==================== 数字员工 / 助理（对齐 colleagues.*，573 条） ====================
+
+/**
+ * 助理状态 —— 对齐 `detail.colleagueStatus.*` 三态。
+ * 列表卡徽标另有 `statusAvailable` / `statusIdle` 两族文案（见 colleague.ts）。
+ */
+export type ColleagueStatus = 'working' | 'idle' | 'abnormal'
+
+/** 可见范围 —— 对齐 `permission.{personal,project,public}` / `publishDialog.option.*` */
+export type ColleagueVisibility = 'personal' | 'project' | 'public'
+
+/** 接入渠道 —— 对齐 `bindChannel.channel.*`（7 类） */
+export type ChannelKind = 'wecom' | 'feishu' | 'dingtalk' | 'email' | 'qq' | 'wechatBot' | 'wechatMini'
+
+/** 渠道绑定态 —— 对齐 `channel.{bind,bound}` */
+export type ChannelState = 'unbound' | 'bound'
+
+/**
+ * 数字员工 / 助理 —— 对齐 `colleagues.*` 全族。
+ * 任务统计 / 热力图等派生数据不入库，由 `shared/colleague.ts` 纯函数推导。
+ */
+export interface Colleague {
+  id: string
+  /** 助理昵称 —— `createDialog.roleNickname` */
+  name: string
+  /** 名称 —— `createDialog.name`（唯一性校验对象） */
+  displayName: string
+  /** 职能 —— `rolePreset.*` id 或 `custom` */
+  role: string
+  description?: string
+  /** 协作风格 —— `createDialog.personality` */
+  personality?: string
+  /** 常用职责 —— `createDialog.responsibility.*` 子集 */
+  responsibilities: string[]
+  /** 能力标签 —— `colleagues.tag.*` 子集 */
+  tags: string[]
+  /** 头像 —— 预制 id（preset01..20）或 data: URL */
+  avatar?: string
+  /** 默认模型 —— `createDialog.model.*` */
+  model?: string
+  visibility: ColleagueVisibility
+  status: ColleagueStatus
+  /** 助理在线 —— `bindChannel.permission.online.title` */
+  online: boolean
+  /** 置顶 —— `action.pin` / `action.unpin` */
+  pinned: boolean
+  /** 来源 —— `detail.source` / `detail.personalSource` / `detail.hiredExpert` */
+  source: 'personal' | 'expert' | 'enterprise'
+  /** 已启用连接 —— `detail.connections`（知识库 / 仓库 / 腾讯文档） */
+  connections: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+/** 渠道绑定 —— 对齐 `bindChannel.channel.*`（独占渠道全局唯一，小程序共享） */
+export interface ChannelBinding {
+  subject: string
+  channel: ChannelKind
+  state: ChannelState
+  boundAt?: number
+}
+
+/** 助理内存记忆 —— 对齐 `imConfig.memory.switch.*`（默认开启） */
+export interface ColleagueMemory {
+  subject: string
+  enabled: boolean
+  updatedAt: number
+}
+
+/** 助理配额 —— 对齐 `quotaLimit.*`（{limit} 由套餐决定） */
+export interface ColleagueQuota {
+  plan: string
+  limit: number
+  used: number
+}
+
+/** 助理任务 —— 对齐 `detail.tasks` / `detail.taskTable.*` / `detail.status.*` */
+export interface ColleagueTask {
+  id: string
+  colleagueId: string
+  name: string
+  status: string
+  /** 来源 —— 对齐 `detail.taskTable.source` / `detail.taskSourceCloud` */
+  source?: string
+  conversationId?: string
+  createdAt: number
+  updatedAt: number
+}
+
 // ==================== 日程 / 日历（对齐 home.schedule.*，676 条） ====================
 
 /**
@@ -543,6 +632,23 @@ export const IPC = {
   eventSettings: 'wb:event:settings',
   eventSettingsSave: 'wb:event:settings:save',
   eventChanged: 'wb:event:changed',
+  // 数字员工 / 助理（对齐 colleagues.*）
+  colleagueList: 'wb:colleague:list',
+  colleagueGet: 'wb:colleague:get',
+  colleagueSave: 'wb:colleague:save',
+  colleagueDelete: 'wb:colleague:delete',
+  colleaguePinned: 'wb:colleague:pinned',
+  colleaguePaused: 'wb:colleague:paused',
+  colleagueClone: 'wb:colleague:clone',
+  colleaguePublish: 'wb:colleague:publish',
+  colleagueQuota: 'wb:colleague:quota',
+  colleagueBindings: 'wb:colleague:bindings',
+  colleagueBind: 'wb:colleague:bind',
+  colleagueUnbind: 'wb:colleague:unbind',
+  colleagueMemory: 'wb:colleague:memory',
+  colleagueMemorySave: 'wb:colleague:memory-save',
+  colleagueTasks: 'wb:colleague:tasks',
+  colleagueChanged: 'wb:colleague:changed',
   // 内置终端
   termOpen: 'wb:terminal:open',
   termWrite: 'wb:terminal:write',

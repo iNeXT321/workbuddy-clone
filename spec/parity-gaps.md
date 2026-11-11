@@ -954,3 +954,75 @@
 > 另修正 1 处**测试脚本自身缺陷**：第 15 节用 `document.querySelector('.sched-dialog .dialog-actions .btn')` 取按钮，命中详情卡第一个按钮（「删除日程」）而非「关闭」，导致后续删除确认叠加；且新建日程原以 `now+1h` 定位，在午夜附近会跨天使日视图看不到 —— 已改为按文本精确取按钮、并显式将日程锚在「明天 10:00–11:00」。
 >
 > deferred 累计：GAP-007（IM 渠道 / 遥测 / 守护进程，含 `automation.datasource.*` 147 条 + `automation.modal.wecomBotSource.*` 28 条）、GAP-011（monaco 代码审阅器）、GAP-049 代码库来源工作空间（Git 集成）、`conversation.shareFile`（119 条，属协同域 collab）、日程域外延子域（会议室预约约 60 条、腾讯会议在线会议、`settings.sync.*` 约 30 条、团队待办叠加、第三方日历约 40 条 —— 原文自身均标注未实现 / 未开放，复刻当前以桩提示对齐）。
+
+---
+
+## 第十三轮 · 数字员工 / 助理域（`colleagues.*`，573 键）
+
+> 选域依据：按命名空间统计未覆盖域，`colleagues.*` 以 **573 键**成为当时最大未覆盖域（settings 1897 与 collab 1487 已部分覆盖；automation 846、home 676 亦已覆盖）。子域分布：createDialog 204、detail 98、bindChannel 72、chat 57、dashboard 32、imConfig 25、action 19、publishDialog 12、quotaLimit 11、cards 9、conversation 9、tag 8、editDialog 4 + 顶层 19。
+>
+> 原文以**桩文案标注自身未实现能力**：IM 扫码绑定、专家雇佣（Beta）、企业智能体、腾讯文档授权、代码仓库 OAuth（GitHub / CNB / 工蜂）、头像自定义上传 —— 复刻这些桩即对齐，不作能力外扩。
+
+### GAP-066 · 完全缺失数字员工（云助理）域
+
+- **严重级**：P0（整域缺失）
+- **维度**：数据层 + 主进程 + 渲染层
+- **基线依据**：顶层 `title`=`助理协作空间`、`subtitle`=`选择一位助理加入任务，让专业角色帮你完成研究、分析和内容创作。`、`myColleagues`=`云助理`、`countLabel`=`共 {count} 位助理`、`empty`=`暂无可用助理，创建或获取授权后会显示在这里。`、`statusAvailable`/`statusIdle`=`工作中`/`已停用`、`skillsLabel`=`助理能力标签`、`usageLabel`=`用量 {usage}`、`moreActions`=`更多操作`。
+- **现状**：库表、IPC、preload、store、面板**全部不存在** —— 用户无法查看、创建或管理助理。
+- **期望**：新增 `colleagues` 表 + `colleague_channels`（PK subject+channel）+ `colleague_memory`（PK subject）+ `colleague_tasks`；`wb:colleague:*` 15 条 IPC + `wb:colleague:changed` 广播；preload 桥接；zustand store；`ColleaguesPanel.tsx` 全屏面板（顶栏 `☰` 入口，`title`=`云助理`），含云助理状态条（`☁ 云端` / `assistantTag` / 在线状态 / `countStatus`）、卡片网格与推荐卡空态。
+- **验证方法**：三套冒烟一致通过（见闭环块）。
+- **修改文件**：src/shared/colleague.ts（新增）、src/shared/types.ts、src/main/store.ts、src/main/ipc.ts、src/preload/index.ts、src/renderer/src/stores/useColleagues.ts（新增）、src/renderer/src/components/ColleaguesPanel.tsx（新增）、src/renderer/src/App.tsx、src/renderer/src/i18n/index.ts、src/renderer/src/styles/global.css
+- **状态**：resolved
+
+### GAP-067 · 缺失创建 / 编辑向导与职业预设、头像、配额
+
+- **严重级**：P1（核心能力缺失）
+- **维度**：渲染层 + 计算层
+- **基线依据**：`createDialog.title`=`创建助理`、`steps.basic`/`steps.config`=`基本信息`/`能力配置`、`rolePresetLabel`=`助理职业快捷选项`、`customRole`=`自定义`、`viewMore`/`viewLess`=`查看更多`/`收起`、`roleNickname`/`name`/`description`；`avatar`=`头像`、`moreAvatar`/`previousAvatar`=`更多头像`/`上一组头像`、`avatarUploadUnsupported`=`当前环境暂不支持上传自定义头像。`；校验 `requiredError`=`请先填写助理昵称、助理简介和名称。`、`nameDuplicated`=`名称已存在，请换一个名称`；`quotaLimit.title`=`助理数量已达上限`、`upgrade`/`confirm`=`去升级`/`好的`、`standardContent` 含 `最多可创建 {limit} 个助理`。
+- **现状**：无法创建助理，无职业预设与头像选择，无名额上限约束。
+- **期望**：（a）职业预设 —— 词典 21 项（含 `custom`），首屏「自定义 + 8 项」折叠，`查看更多`/`收起` 切换，**展开不得改变当前步骤**；（b）头像 —— `preset01..20` 共 20 张，每页 8 张翻页，翻页保持选中，自定义上传走桩文案；（c）两步向导 —— 第一步**必填校验**（昵称 / 简介 / 名称三者缺一即 `requiredError`）才可进入第二步，第二步含连接、雇佣专家（Beta + 企业智能体桩）、能力标签、模型、可见范围三档；（d）重名走 `nameDuplicated` 且**不产生脏数据**；（e）配额 —— 达上限时点「创建助理」改走 `quotaLimit` 对话框（含 `去升级`），不打开向导。
+- **验证方法**：三套冒烟一致通过（见闭环块）。
+- **修改文件**：src/shared/colleague.ts、ColleaguesPanel.tsx、src/renderer/src/i18n/index.ts
+- **状态**：resolved
+
+### GAP-068 · 缺失详情页（三段导航 / 统计 / 热力图 / 任务表）
+
+- **严重级**：P1（核心能力缺失）
+- **维度**：渲染层 + 计算层
+- **基线依据**：`detail.nav.{home,tasks,memory}`=`首页`/`对话任务`/`记忆`、`back`=`返回`、`startChat`=`发起对话`、`daysOnDuty`=`上岗天数`、`activityHeatmap`=`近一年活跃热力图`、`activityLevel`=`活跃等级`、`activityTotal`=`近一年累计 {count} 次活跃`、`less`/`more`=`少`/`多`；`colleagueStatus.{working,idle,abnormal}`=`工作中`/`空闲`/`异常`；`metric.{total,inProgress,completed,completionRate}` = `总委派任务`/`进行中`/`已完成`/`完成率`；`taskTable.{id,name,source,status,createdAt,action}`；`memoryEmpty`=`暂无记忆更新记录`、`taskOverviewV2`=`任务概览`。
+- **现状**：看不到助理状态、活跃度与历史任务。
+- **期望**：详情页三段导航（首页 / 记忆 / 对话任务）；状态横幅（三态 + 描述）；**4 项统计指标**；**364 格热力图**（确定性播种 + 少/多图例）；基本信息（来源 / 可见范围 / 上岗天数 / 已启用连接 / 适用场景）；最近动态；记忆页（`长期记忆` + 空态 + 内嵌内存记忆开关）；任务页（`任务概览` + 6 列表格 + 状态中文 + 真实任务名）。
+- **验证方法**：三套冒烟一致通过（见闭环块）。
+- **修改文件**：src/shared/colleague.ts、ColleaguesPanel.tsx
+- **状态**：resolved
+
+### GAP-069 · 缺失配置页（7 类渠道 / 独占转绑 / IM 三 Tab / 内存记忆）
+
+- **严重级**：P0（数据一致性风险）
+- **维度**：数据层 + 渲染层
+- **基线依据**：`bindChannel.section.{profile,channel,permission,usage}`、`bindChannel.channel.bind`/`bound`/`rebind`/`unbind`=`绑定`/`已绑定`/`重扫`/`解绑`；`imConfig.tab.{bindChannel,assistant,colleague,memory}`=`绑定渠道`/`云助理 IM`/`助理 IM`/`内存记忆`；`imConfig.colleague.subtitle`=`每位助理可绑定专属渠道，独立接收 / 回复消息。除小程序外，同一渠道同一时间只能由 1 位助理占用。`；`imConfig.memory.switch.status`=`默认开启`；`quotaLimit.upgrade`=`去升级`。
+- **现状**：无法绑定 IM 渠道、无法配置可见范围与在线状态、无长期记忆开关。
+- **期望**：（a）配置页 —— 助理信息段、**7 类渠道**（企业微信 / 微信 bot / 飞书 / QQ / 云助理·微信小程序 等）、权限与可见三档、在线开关、用量项标「下期」；（b）**独占渠道转绑** —— 非 `wechatMini` 渠道同一时刻只能由 1 位助理占用，绑定新占用者时旧占用者自动转 `unbound`；小程序共享不转绑；（c）IM 配置三 Tab（云助理 IM / 助理 IM / 内存记忆），云助理主体固定 `'cloud'`；（d）内存记忆默认开启、开关**真实落库**；（e）发布对话框三档（`个人分身`/`发布到项目`/`公开`），提交按钮随档位切 `保持个人`/`发布到项目`/`提交审核`，真实落库。
+- **验证方法**：三套冒烟一致通过（见闭环块）。
+- **修改文件**：src/shared/colleague.ts、src/main/store.ts、src/main/ipc.ts、ColleaguesPanel.tsx
+- **状态**：resolved
+
+---
+
+> 闭环状态（第十三轮）：GAP-066 / 067 / 068 / 069 全部 **resolved 并复检通过**。
+>
+> - 逻辑冒烟 `smoke-r13-logic.mjs`：**151/151 通过**（状态三态、可见范围三档、21 项职业预设、职责与 8 项标签、推荐卡、头像 20 张与分页、7 类渠道与独占判定、6 档套餐配额、实体构造、文案推导、上岗天数、相对时间、364 格热力图、统计 / 导航 / 任务表、面板静态断言 20 条、接入静态断言 15 条、词典完整性 573×2 与无空值）。
+> - DB 冒烟 `smoke-r13-db.cjs`：**95/95 通过**（建表、CRUD、更新、名称唯一性、置顶排序、暂停恢复、可见范围、复制、配额、渠道绑定（独占转绑 + 小程序共享）、内存记忆、助理任务、级联删除、旧库兼容）。
+> - 运行时冒烟 `smoke-r13.cjs`：**149/149 通过**，渲染层 **0 控制台报错**；真实 UI 路径下验证入口 / 面板 / 列表卡 / 置顶排序 / 状态筛选 / 搜索 / 创建向导两步与必填与重名 / 详情页三段导航与统计热力图任务表 / 编辑 / 复制 / 发布 / 配置页 7 渠道与转绑与 IM 三 Tab 与内存记忆 / 配额拦截 / 删除二次确认 / Esc 逐层 / 数据一致性。
+> - 回归：`smoke-r12-*`（逻辑 151/151、DB 54/54、运行时 101/101）、`smoke-r11-*`（逻辑 129/129、DB 49/49、运行时 50/50）、`smoke-r10-*`（逻辑 70/70、DB 20/20、运行时 33/33）**全绿**，0 控制台报错。
+> - `npm run typecheck` 与 `npm run build` 均干净通过。
+>
+> **第十三轮 open 清零。** 本轮闭环过程中由冒烟暴露并修复的**真实缺陷**共 4 处：
+> 1. **列表页未加载渠道绑定** —— 卡片 IM 状态恒为「未连接 IM」，即便已绑企业微信；根因是面板挂载时未拉取 `colleagueBindings`。已在列表面板补 `useEffect` 加载。
+> 2. **职业预设「查看更多」不展开** —— 该按钮点击会切换 `role` 而非展开（被当作 toggle 误用）。已新增独立 `showAllRoles` 状态与专用按钮（`col-roles-toggle`），并在 `openCreate` 重置、`openEdit` 依预设是否命中初始化。
+> 3. **「下一步」未做第一步必填校验，且步进器可绕过** —— 缺必填也能进入第二步，`requiredError` 直到最终保存才触发；同时「名称」字段被错标「（可选）」，与 `requiredError`「助理昵称、助理简介和名称」三必填矛盾。已抽出 `basicValid` 统一校验，「下一步」与步进器均走 `goNext`，并去掉「（可选）」标注。
+> 4. **`updated_at` 同毫秒并列导致排序不确定** —— `saveColleague` 一律用 `Date.now()`，置顶→取消置顶连击时两条记录时间戳相同，`ORDER BY pinned DESC, updated_at DESC` 无平局裁决，列表顺序随机。已引入**单调递增时间戳** `nextTimestamp()`，保证同毫秒写入也严格递增。（此前被误记为「测试脚本预期错误」，本轮定位为真实缺陷。）
+>
+> 另修正多处**测试脚本自身缺陷**：重名用例原在列表已满（3 位 = standard 上限）时点「创建助理」，被配额拦截致向导未打开 —— 已改为在同一向导内先试重名再改名创建；创建成功后向导自动关闭，原脚本仍按 Esc 会误关整个面板致后续连锁 —— 已改为断言自动关闭；`配置页关闭` 原点「确定」，而词典 `common.confirm`=`确认`；`配额未提示时不会打开向导` 原用 `.col-dialog` 判断，与配额对话框自身同选择器冲突 —— 改用向导独有的 `.col-steps`；`openMenu` 原按昵称定位，复制产生的副本昵称相同（`{name} 的副本` 仅改 `displayName`，昵称继承「小研」）导致误点副本 —— 已给卡片加 `data-id` 并改按 id 定位。
+>
+> deferred 累计（本轮无新增）：GAP-007（IM 渠道 / 遥测 / 守护进程）、GAP-011（monaco 代码审阅器）、GAP-049 代码库来源工作空间（Git 集成）、`conversation.shareFile`（协同域）、日程域外延子域；另 `colleagues.createDialog.codeRepo.*`（29 条，GitHub / CNB / 工蜂 OAuth 授权链路）、`colleagues.createDialog.tencentDocs.*`（17 条，腾讯文档授权选文件）、`colleagues.createDialog.hireExpert.*`（19 条，专家雇佣 Beta / 企业智能体）、`colleagues.chat.*`（57 条，真实对话实例与多轮编排）—— 原文自身均标注 Beta / 未实现 / 需授权，复刻当前以桩提示对齐。
