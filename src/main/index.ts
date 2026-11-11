@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, shell, nativeTheme, dialog } from 'electron'
 import { join } from 'node:path'
 import { registerIpcHandlers, activeStreams } from './ipc'
 import { registerTerminalHandlers } from './terminal'
+import { startScheduler, stopScheduler } from './automation'
 import { getStore } from './store'
 
 /**
@@ -111,6 +112,8 @@ app.whenReady().then(() => {
   registerTerminalHandlers()
   buildMenu()
   createWindow()
+  // 定时任务调度器（对齐 automation.* 的本地调度）
+  startScheduler()
 
   // 系统外观变化 → 通知所有窗口，渲染层按「跟随系统」设置实时切换
   nativeTheme.on('updated', () => {
@@ -128,3 +131,6 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
+
+// 退出前停止调度器，避免定时器悬挂
+app.on('before-quit', () => stopScheduler())

@@ -12,10 +12,14 @@ import type {
   UserQuestion,
   QuestionAnswer,
   ToolCall,
-  Conversation
+  Conversation,
+  Automation,
+  Schedule
 } from '../shared/types'
 import { getStore } from './store'
 import { streamChat, classifyError } from './llm'
+import { runAutomation } from './automation'
+import { nextRun } from '../shared/schedule'
 import { createWorkspace, listWorkspaces, workspaceExists } from './workspace'
 import { MAX_SESSIONS, approvalToolFor, APPROVAL_RULES } from '../shared/errorCodes'
 
@@ -60,6 +64,13 @@ export function clearSessionDecisions(conversationId: string): void {
   sessionDecisions.delete(conversationId)
   pendingApprovals.delete(conversationId)
   pendingQuestions.delete(conversationId)
+}
+
+/** 广播「定时任务已变更」 —— 供渲染层刷新列表（对齐 automation.changed 事件） */
+export function broadcastAutomationChanged(): void {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send(IPC.automationChanged)
+  }
 }
 
 /**
@@ -410,6 +421,71 @@ export function registerIpcHandlers(): void {
       return sep
     }
   )
+
+  // ---------- 定时任务（对齐 automation.*） ----------
+  ipcMain.handle(IPC.automationList, (_e, includeArchived?: boolean) =>
+    getStore().listAutomations(!!includeArchived)
+  )
+
+  ipcMain.handle(IPC.automationGet, (_e, id: string) => getStore().getAutomation(id))
+
+  ipcMain.handle(IPC.automationSave, (_e, input: Automation) => {
+    const saved = getStore().saveAutomation(input)
+    broadcastAutomationChanged()
+    return saved
+  })
+
+  ipcMain.handle(IPC.automationEnabled, (_e, id: string, enabled: boolean) => {
+    const a = getStore().setAutomationEnabled(id, enabled)
+    broadcastAutomationChanged()
+    return a
+  })
+
+  ipcMain.handle(IPC.automationArchived, (_e, id: string, archived: boolean) => {
+    const a = getStore().setAutomationArchived(id, archived)
+    broadcastAutomationChanged()
+    return a
+  })
+
+  ipcMain.handle(IPC.automationDelete, (_e, id: string) => {
+    getStore().deleteAutomation(id)
+    broadcastAutomationChanged()
+    return true
+  })
+
+  ipcMain.handle(IPC.automationDeleteBatch, (_e, ids: string[]) => {
+    const r = getStore().deleteAutomations(ids)
+    broadcastAutomationChanged()
+    return r
+  })
+
+  // 立即运行 —— 对齐 card.run=立即运行（手动触发不受 nextRunAt 约束）
+  ipcMain.handle(IPC.automationRunNow, async (_e, id: string, test?: boolean) => {
+    const a = getStore().getAutomation(id)
+    if (!a) return { ok: false, reason: 'notFound' }
+    const run = await runAutomation(a, { test: !!test })
+    return { ok: true, run }
+  })
+
+  ipcMain.handle(IPC.automationRuns, (_e, automationId?: string, includeArchived?: boolean) =>
+    getStore().listAutomationRuns(automationId, !!includeArchived)
+  )
+
+  ipcMain.handle(IPC.automationRunArchive, (_e, runId: string, archived: boolean) => {
+    getStore().setRunArchived(runId, archived)
+    return true
+  })
+
+  ipcMain.handle(IPC.automationRunDelete, (_e, runId: string) => {
+    getStore().deleteAutomationRun(runId)
+    return true
+  })
+
+  // 预览下一次运行时间（表单内实时提示，对齐 row.startsIn「{time}执行」）
+  ipcMain.handle(IPC.automationNextRun, (_e, schedule: Schedule) => {
+    const at = nextRun(schedule, Date.now())
+    return { nextRunAt: at }
+  })
 }
 
 export { activeStreams, pendingApprovals, pendingQuestions, sessionDecisions, launchDecisions }

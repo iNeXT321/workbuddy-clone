@@ -10,7 +10,10 @@ import type {
   ApprovalDecision,
   ConversationLimit,
   WorkMode,
-  PermissionLevel
+  PermissionLevel,
+  Automation,
+  AutomationRun,
+  Schedule
 } from '../shared/types'
 
 /**
@@ -70,6 +73,21 @@ export interface WorkbuddyBridge {
   // 运行中任务查询（对齐 conversation.windowTaskRunning.*）
   runningTasks(): Promise<string[]>
 
+  // 定时任务（对齐 automation.*）
+  automationList(includeArchived?: boolean): Promise<Automation[]>
+  automationGet(id: string): Promise<Automation | null>
+  automationSave(input: Automation): Promise<Automation>
+  automationEnabled(id: string, enabled: boolean): Promise<Automation | null>
+  automationArchived(id: string, archived: boolean): Promise<Automation | null>
+  automationDelete(id: string): Promise<boolean>
+  automationDeleteBatch(ids: string[]): Promise<{ success: number; failed: string[] }>
+  automationRunNow(id: string, test?: boolean): Promise<{ ok: boolean; reason?: string; run?: AutomationRun }>
+  automationRuns(automationId?: string, includeArchived?: boolean): Promise<AutomationRun[]>
+  automationRunArchive(runId: string, archived: boolean): Promise<boolean>
+  automationRunDelete(runId: string): Promise<boolean>
+  automationNextRun(schedule: Schedule): Promise<{ nextRunAt?: number }>
+  onAutomationChanged(cb: () => void): () => void
+
   // 内置终端
   termOpen(conversationId: string): Promise<{ ok: boolean; shell?: string }>
   termWrite(conversationId: string, data: string): Promise<{ ok: boolean }>
@@ -124,6 +142,25 @@ const bridge: WorkbuddyBridge = {
   conversationOrigin: (id, origin) => ipcRenderer.invoke(IPC.conversationOrigin, id, origin),
   conversationWorkspace: (id, workspace) => ipcRenderer.invoke(IPC.conversationWorkspace, id, workspace),
   runningTasks: () => ipcRenderer.invoke(IPC.runningTasks),
+
+  automationList: (includeArchived) => ipcRenderer.invoke(IPC.automationList, includeArchived),
+  automationGet: (id) => ipcRenderer.invoke(IPC.automationGet, id),
+  automationSave: (input) => ipcRenderer.invoke(IPC.automationSave, input),
+  automationEnabled: (id, enabled) => ipcRenderer.invoke(IPC.automationEnabled, id, enabled),
+  automationArchived: (id, archived) => ipcRenderer.invoke(IPC.automationArchived, id, archived),
+  automationDelete: (id) => ipcRenderer.invoke(IPC.automationDelete, id),
+  automationDeleteBatch: (ids) => ipcRenderer.invoke(IPC.automationDeleteBatch, ids),
+  automationRunNow: (id, test) => ipcRenderer.invoke(IPC.automationRunNow, id, test),
+  automationRuns: (automationId, includeArchived) =>
+    ipcRenderer.invoke(IPC.automationRuns, automationId, includeArchived),
+  automationRunArchive: (runId, archived) => ipcRenderer.invoke(IPC.automationRunArchive, runId, archived),
+  automationRunDelete: (runId) => ipcRenderer.invoke(IPC.automationRunDelete, runId),
+  automationNextRun: (schedule) => ipcRenderer.invoke(IPC.automationNextRun, schedule),
+  onAutomationChanged: (cb) => {
+    const listener = () => cb()
+    ipcRenderer.on(IPC.automationChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.automationChanged, listener)
+  },
 
   termOpen: (conversationId) => ipcRenderer.invoke(IPC.termOpen, conversationId),
   termWrite: (conversationId, data) => ipcRenderer.invoke(IPC.termWrite, conversationId, data),

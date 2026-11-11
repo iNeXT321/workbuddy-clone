@@ -305,6 +305,53 @@ MediaPreviewContext     Icons
 
 - **文案（事实）**：`title`=`会话数量已达上限`、`content`=`您已达到最大会话数量限制，请先归档或删除一些会话后再创建新会话。`
 
+### 5.7 第八次补证：定时任务域（automation.*，第十一轮监督依据）
+
+证据来源：i18n 词典 `automation.*` 命名空间（**846 条**，其中本地可复刻子域约 366 条）+ 英文包 `en-DtOAKogW.js` 逐键对齐。该域在复刻体中原为**完全空白**（`grep automation` 命中 0），故本轮为「从 0 建域」。
+
+**T. 面板与双 Tab（事实）—— `automation.tab.*` / `automation.list.*` / `automation.toolbar.*`**
+
+- **Tab（事实）**：`tab.scheduledTasks`=`定时任务`、`tab.runRecords`=`运行记录` → 面板为**双 Tab 结构**，任务定义与执行历史是两个视图。
+- **面板定位（事实）**：`list.description`=`配置定时任务，Workbuddy 将按计划定时执行任务`；`list.empty`=`还没有定时任务，点击右上角「添加定时任务」创建`。
+- **工具栏（事实）**：`toolbar.search`=`搜索定时任务/记录`、`toolbar.filter`=`筛选`、`toolbar.refresh`=`刷新`、`toolbar.new`=`新建`、`toolbar.batchManage`=`批量管理`、`toolbar.addAutomation`=`新建定时任务`、`toolbar.newFromConversation`=`从对话新建`、`toolbar.newFromTemplate`=`从模版新建`。
+
+**U. 任务分组与卡片（事实）—— `automation.section.*` / `automation.card.*` / `automation.row.*`**
+
+- **四分组（事实）**：`section.scheduled`=`已安排`、`section.inProgress`=`执行中`、`section.completed`=`已完成`、`section.archived`=`已归档`。
+- **卡片动作（事实）**：`card.run`=`立即运行`、`card.pauseTask`=`暂停任务`、`card.resumeTask`=`开启任务`（注意：**恢复动作的原文是「开启任务」而非「恢复」**）、`card.openTask`=`打开任务`、`card.viewRecords`=`查看运行记录`。
+- **行状态（事实，13 条）**：`row.startsIn`=`{time}执行`、`row.inProgress`=`运行中`、`row.queued`=`排队中，等待空闲后执行`、`row.peakPending`=`高峰期排队中`、`row.missedPending`=`已错过计划时间，将补跑一次`、`row.waitingLogin`=`等待登录后执行`、`row.waitingForSession`=`正在创建会话`、`row.preparing`=`准备中...`、`row.interrupted`=`上次执行中断`、`row.onceOnly`=`单次执行`、`row.expired`=`已过期，不再执行`、`row.noUpcomingRun`=`暂无后续执行`、`row.succeeded`/`row.failed`=`成功`/`失败`。
+
+**V. 调度模型：八类频率（事实）—— `automation.schedule.*`**
+
+- **八类（事实）**：`once`=`单次任务`、`daily`=`每天`、`workday`=`每个工作日`、`weeklyMonday`=`每周一`、`biweekly`=`双周`、`monthly`=`每月`、`yearly`=`每年`、`periodic`=`周期`（UI 文案为「按间隔」）。
+- **摘要模板（事实，6 条）**：`summary.daily`=`每天 {time}`、`summary.weekly`=`每周 {days} {time}`、`summary.biweekly`=`双周 {days} {time}`、`summary.monthly`=`每月 {day} {time}`、`summary.yearly`=`每年 {month}{day} {time}`、`summary.once`=`单次 {dateTime}` —— 与实现逐字对齐（工作日/间隔无独立模板，由 `daily` 与 `intervalValue` 派生）。
+- **字段标签（事实）**：`frequencyLabel`=`重复`、`timeLabel`=`时间`、`weekdaySection`=`重复星期`、`monthDaySection`=`每月日期`、`intervalLabel`=`间隔`、`intervalValue`=`每 {count} 小时`、`intervalIncrease`/`intervalDecrease`=`增加间隔`/`减少间隔`。
+- **星期取值（事实）**：`schedule.day.MO`~`SU`=`周一`~`周日`（与 `datePicker.weekday.*` 7 条并存）。
+
+**W. 校验规则（事实，8 条）—— `automation.schedule.validation.*`**
+
+- **逐条（事实）**：`onceDateRequired`=`请选择单次执行日期`、`onceFutureRequired`=`单次执行时间必须晚于当前时间`、`onceCorrectedToNow`=`所选时间已过，已自动调整为当前时间，请确认`、`intervalHours`=`按间隔执行需至少每 1 小时`、`weekdayRequired`=`请至少选择一个星期`、`monthdayRequired`=`请至少选择一个日期`、`monthRequired`=`请选择月份`、`dateRequired`=`请选择日期`。
+- **推论（强）**：`onceDateRequired` 与 `dateRequired` **并存**，说明单次日期与月内日期的空值提示是**两条独立规则**；`intervalHours` 明确**最小间隔 = 1 小时**。
+
+**X. 创建/编辑表单（事实）—— `automation.modal.*` / `automation.form.*`**
+
+- **表单骨架（事实）**：`modal.titleCreate`=`新建定时任务`、`modal.title`=`编辑定时任务`、`modal.name`=`名称`、`modal.namePlaceholder`=`输入任务名称`、`modal.prompt`=`提示词`、`modal.promptPlaceholder`=`添加提示词`、`modal.schedule`=`执行频率`、`modal.workspaces`=`工作区`、`modal.deleteConfirm`=`确认删除该定时任务？`。
+- **执行权限（事实，两套文案并存）**：表单内 chip 用 `modal.permissionMode.default`=`需逐次确认` / `modal.permissionMode.fullAccess`=`免确认执行`；**任务卡片标签**用 `permission.default`=`默认权限` / `permission.fullAccess`=`完全访问权限（推荐）`。这是本轮运行时冒烟一次断言的直接依据 —— 两者是**不同位置的不同文案**，不可互换。
+- **无人值守告知（事实）**：`modal.executionNoticeLabel`=`提示`、`modal.executionNoticeText`=`定时任务执行时，请勿关闭电脑或退出客户端，否则任务将无法正常执行`；`permission.fullAccessDesc`=`定时任务会在本地客户端无人值守执行。执行期间请勿关闭电脑或退出客户端，否则任务可能中断。`
+- **表单能力边界（事实）**：`form.hint`=`定时任务仅支持「定时执行」一种触发形态`。
+
+**Y. 运行记录与失败分因（事实）—— `automation.records.*` / `automation.runGroup.*` / `automation.error.reason.*` / `automation.detail.reason.*`**
+
+- **列（事实）**：`records.column.name`=`任务名称`、`status`=`状态`、`time`=`运行时间`、`duration`=`耗时`、`type`=`任务类型`、`actions`=`操作`。
+- **日期分组（事实）**：`runGroup.date.today`=`今天`、`yesterday`=`昨天`、`tomorrow`=`明天`、`monthDay`=`{month}月{day}日`、`fullDate`=`{year}年{month}月{day}日`。
+- **运行态（事实）**：`runGroup.running`=`任务正在运行中，点击查看详情`、`runGroup.paused`=`任务已暂停`、`runGroup.nextRun`=`下一次运行 {time}`、`runGroup.viewAll`=`查看全部`、`runGroup.collapse`=`收起`、`runGroup.continueChat`=`继续对话`；`run.status.pending`=`待执行`、`run.status.timeout`=`超时`、`run.status.cancelled`=`已取消`。
+- **失败分因（事实，`error.reason` 26 条 + `detail.reason` 25 条，语义分组）**：网络类 `networkUnavailable`=`网络连接异常，任务未能开始执行，请在网络恢复后重试。`；登录类 `authUnavailable`；容量类 `capacityQueueFull`/`capacityQueueUserLimit`/`capacityQueueWaitFailed`；超时类 `runTimeout`/`sessionStartTimeout`/`finalizationTimeout`/`sessionStuck`（`sessionStuck`=`任务长时间未结束，系统已自动停止本次运行。`）；会话类 `sessionStartFailed`/`sessionEnded`/`runFailedNoConversation`；环境/依赖类 `environmentNotReady`/`connectorUnavailable`/`workspaceUnavailable`；内容类 `contextLimit`/`turnLimit`/`emptyResult`；中断类 `runInterrupted`/`partialDelivered`；设备离线类 `recoveryFailed`=`原定时间设备未在线，重试仍未成功。`
+- **推论（强）**：26 条分因共存说明原版有**远超「成功/失败」二元的失败归因体系**，且分因最终要映射为用户可读文案。本轮复刻实现为 `reason` 字段 + 渲染期按键取文案。
+
+**Z. 与本轮范围外的子域（事实）**
+
+- `automation.datasource.*`（68+35+12+12+8+6+6 ≈ 147 条，数据源/Webhook/同步模式）、`automation.modal.wecomBotSource.*`（28 条，企微 BOT 绑定）属**连接器 / 企微渠道域**，与 deferred 的 GAP-007 同源，本轮不复刻。
+
 ## 6. 本基线文件的边界与限制
 
 - 本基线基于**静态产物清单 + 少量入口源码**，未完整反编译 300+ 模块。
@@ -333,11 +380,12 @@ MediaPreviewContext     Icons
 11. ✅ P1：工具链路闭环（审批 / 提问 / 工具卡片）（第八轮，GAP-041~045）
 12. ✅ P1：消息流健壮性 + 工作空间 + 模型能力门控 + 上下文档位（第九轮，GAP-046~052）
 13. ✅ P1/P2：会话状态角标 + 工作空间分组 + 全局任务搜索 + 来源标记 + 运行中关窗确认（第十轮，GAP-053~057）
+14. ✅ P1：定时任务域（调度模型 + 存储与主进程调度器 + 面板与创建表单 + 运行记录）（第十一轮，GAP-058~061）
 
 **待决策（架构级长尾，需范围共识）**
-14. ⏳ P2：monaco 代码变更审阅器（diff/edit/apply）—— 原版 codeEditor chunk 的核心业务是「AI 代码改动审阅」，需在复刻引入 Artifact/代码编辑场景后才成立
-15. ⏳ P1：IM 渠道（飞书/钉钉/企微）
-16. ⏳ P2：遥测 / 自更新 / 守护进程
-17. ⏳ P2：`conversation.shareFile.*`（119 条，属协同域 collab）与代码库来源工作空间（Git 集成）
+15. ⏳ P2：monaco 代码变更审阅器（diff/edit/apply）—— 原版 codeEditor chunk 的核心业务是「AI 代码改动审阅」，需在复刻引入 Artifact/代码编辑场景后才成立
+16. ⏳ P1：IM 渠道（飞书/钉钉/企微）—— 含 `automation.datasource.*`（147 条）与 `automation.modal.wecomBotSource.*`（28 条）
+17. ⏳ P2：遥测 / 自更新 / 守护进程
+18. ⏳ P2：`conversation.shareFile.*`（119 条，属协同域 collab）与代码库来源工作空间（Git 集成）
 
 > 长尾项建议：先不追求 100% 一致，而是按「核心链路 → 能力外延」逐层推进。每轮由监督角色产出新 GAP，开发角色修复后复检，直至本阶段范围内 0 open。

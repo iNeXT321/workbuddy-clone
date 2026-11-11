@@ -160,6 +160,113 @@ export type ConversationStatus = 'failed' | 'pending' | 'unread' | 'working'
 /** 任务来源端 —— 对齐 `conversation.origin.*`：web / workbuddyApp / workbuddyMp */
 export type ConversationOrigin = 'web' | 'workbuddyApp' | 'workbuddyMp'
 
+// ==================== 定时任务（对齐 automation.*，846 条） ====================
+
+/**
+ * 星期 —— 对齐 `automation.day.*`（MO/TU/WE/TH/FR/SA/SU）与 `datePicker.weekday.*`。
+ * 采用 ISO 语义（MO=1 … SU=7），便于与 JS Date.getDay() 换算。
+ */
+export type Weekday = 'MO' | 'TU' | 'WE' | 'TH' | 'FR' | 'SA' | 'SU'
+
+/** 周期类型 —— 对齐 `automation.schedule.*` 的分型（periodicDay/Week/Biweek/Month/Year + interval + once） */
+export type ScheduleKind = 'once' | 'daily' | 'workday' | 'weekly' | 'biweekly' | 'monthly' | 'yearly' | 'interval'
+
+/**
+ * 调度规则 —— 对齐 `automation.schedule.summary.*`（once / daily / weekly / biweekly / monthly / yearly）
+ * 与 `intervalSummary`（按间隔）。`time` 为 `HH:mm` 本地时间；`intervalMinutes` 仅 interval 用。
+ */
+export interface Schedule {
+  kind: ScheduleKind
+  /** 执行时刻 `HH:mm`（interval 类型忽略） */
+  time?: string
+  /** weekly / biweekly 选中的星期（≥1） */
+  weekdays?: Weekday[]
+  /** monthly / yearly 选中的日（1-31，≥1） */
+  monthDays?: number[]
+  /** yearly 选中的月（1-12） */
+  month?: number
+  /** interval：间隔分钟数（≥60，对齐 validation.intervalHours「至少每 1 小时」） */
+  intervalMinutes?: number
+  /** interval：限定执行的小时区间（对齐 hourlyRangeAt「每天 {from}-{to} 每小时」） */
+  hourFrom?: number
+  hourTo?: number
+  /** once：绝对执行时间戳（毫秒） */
+  at?: number
+}
+
+/** 定时任务 —— 对齐 `automation.modal.*`（名称/提示词/执行频率/工作区/权限） */
+export interface Automation {
+  id: string
+  name: string
+  /** 提示词（对齐 `automation.modal.prompt`） */
+  prompt: string
+  /** 附加到提示词前的定时任务标识（对齐 `form.autoTag`=定时任务） */
+  schedule: Schedule
+  /** 权限档位 —— 对齐 `automation.permission.*` */
+  permission: 'default' | 'fullAccess'
+  /** 结果推送至（对齐 `form.deliveryTarget` / `deliveryTargetMain`=主会话） */
+  deliveryTarget?: string
+  /** 绑定的工作区（对齐 `automation.modal.workspaces`，每行一个） */
+  workspaces?: string[]
+  /** 启停状态（对齐 `automation.filter.statusActive/statusPaused`） */
+  enabled: boolean
+  /** 归档（对齐 `automation.action.archive`） */
+  archived?: boolean
+  /** 执行环境（对齐 `automation.cloud.badgeHint`：云端沙箱创建后不可修改） */
+  env?: 'local' | 'cloud'
+  /** 上次运行时间（毫秒） */
+  lastRunAt?: number
+  /** 下次运行时间（毫秒） */
+  nextRunAt?: number
+  createdAt: number
+  updatedAt: number
+}
+
+/** 运行记录状态 —— 对齐 `automation.run.status.*` 与 `automation.row.*` */
+export type AutomationRunStatus =
+  | 'pending'
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | 'interrupted'
+  | 'skipped'
+
+/** 运行结果证据 —— 对齐 `automation.evidence.*` */
+export interface AutomationEvidence {
+  artifact?: boolean
+  assistantOutput?: boolean
+  externalAction?: boolean
+  localFileMutation?: boolean
+}
+
+/** 一次运行记录 —— 对齐 `automation.records.*` / `automation.detail.*` / `automation.run.*` */
+export interface AutomationRun {
+  id: string
+  automationId: string
+  /** 快照任务名（任务删除后记录仍可读，对齐 `records.deletedAutomation`） */
+  taskName: string
+  status: AutomationRunStatus
+  /** 失败分因码 —— 对齐 `automation.detail.reason.*`（如 network / modelConfigFailed / runTimeout） */
+  reason?: string
+  startedAt: number
+  finishedAt?: number
+  /** 关联会话 id（对齐 `detail.retryConversation`） */
+  conversationId?: string
+  /** 结果摘要（对齐 `detail.summary`） */
+  summary?: string
+  /** 证据（对齐 `detail.artifacts` / `evidence.*`） */
+  evidence?: AutomationEvidence
+  /** 技术详情 / 错误全文（对齐 `detail.technicalDetails` / `errorTruncated`） */
+  error?: string
+  /** 是否归档（对齐 `record.archive.*`） */
+  archived?: boolean
+  /** 是否测试运行（对齐 `result.manualTest`=测试运行成功；不影响正式调度） */
+  test?: boolean
+}
+
+
 export interface ModelInfo {
   id: string
   name: string
@@ -342,6 +449,20 @@ export const IPC = {
   conversationWorkspace: 'wb:conversation:workspace',
   // 运行中任务查询（对齐 conversation.windowTaskRunning.*：关窗前二次确认）
   runningTasks: 'wb:conversation:running-tasks',
+  // 定时任务（对齐 automation.*）
+  automationList: 'wb:automation:list',
+  automationGet: 'wb:automation:get',
+  automationSave: 'wb:automation:save',
+  automationEnabled: 'wb:automation:enabled',
+  automationArchived: 'wb:automation:archived',
+  automationDelete: 'wb:automation:delete',
+  automationDeleteBatch: 'wb:automation:delete-batch',
+  automationRunNow: 'wb:automation:run-now',
+  automationRuns: 'wb:automation:runs',
+  automationRunArchive: 'wb:automation:run-archive',
+  automationRunDelete: 'wb:automation:run-delete',
+  automationNextRun: 'wb:automation:next-run',
+  automationChanged: 'wb:automation:changed',
   // 内置终端
   termOpen: 'wb:terminal:open',
   termWrite: 'wb:terminal:write',

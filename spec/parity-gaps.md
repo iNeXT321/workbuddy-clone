@@ -820,3 +820,65 @@
 > - `npm run typecheck` 与 `npm run build` 均干净通过。
 >
 > **第十轮 open 清零。** deferred 累计：GAP-007（IM 渠道 / 遥测 / 守护进程）、GAP-011（monaco 代码审阅器）、GAP-049 代码库来源工作空间（Git 集成）、`conversation.shareFile`（119 条，属协同域 collab）。
+
+---
+
+## 第十一轮 · 定时任务域（GAP-058 ~ 061）
+
+> 本轮来源：词典 `automation.*` 共 **846 条**，其中本地可复刻子域约 366 条。监督巡检确认该域在复刻体中**完全空白**（`grep -rn "automation" src/` 命中 0 处、顶栏无入口、DB 无表、IPC 无通道），属**整域缺失**，故拆为四个可独立验证的 GAP。
+
+### GAP-058 · 完全缺失定时任务调度模型（八类频率 + 下次执行推导）
+
+- **严重级**：P1（核心能力缺失）
+- **维度**：共享层（纯逻辑）
+- **基线依据**：`automation.schedule.*`（`once`=`单次任务`、`daily`=`每天`、`workday`=`每个工作日`、`weeklyMonday`=`每周一`、`biweekly`=`双周`、`monthly`=`每月`、`yearly`=`每年`、`periodic`=`周期`）；摘要模板 6 条（`summary.daily`=`每天 {time}` … `summary.yearly`=`每年 {month}{day} {time}`）；`schedule.day.MO`~`SU`=`周一`~`周日`；校验 8 条（`intervalHours`=`按间隔执行需至少每 1 小时`）。
+- **现状**：无任何调度模型。既没有频率类型定义，也没有「给出计划 → 算出下次触发时刻」的推导，无法判断任务是否到期。
+- **期望**：新增 `src/shared/schedule.ts` —— `Schedule` 联合类型覆盖 **8 类**（`once/daily/workday/weekly/biweekly/monthly/yearly/interval`）；`nextRun(schedule, from)` 对每类给出正确下次时刻（工作日跳过周末、双周跨 14 天、月末按实际天数回退）；`scheduleSummary()` **逐字**使用原文 6 个模板并复用 `schedule.day.*` 星期名；`validateSchedule()` 返回**原文 i18n 键**而非硬编码中文（8 条规则一一对应，间隔下限 **1 小时**）。
+- **验证方法**：逻辑冒烟 —— 逐类断言 `nextRun` 结果（含跨周末、跨月、跨年、跨 14 天）；`scheduleSummary` 对 8 类输出与原文模板拼接结果比对；`validateSchedule` 对 8 条空值/非法输入返回的键名逐一比对；星期标签聚合（5 天→`工作日`、2 天→`周末`、7 天→`每天`）。
+- **修改文件**：src/shared/schedule.ts（新增）、src/shared/types.ts
+- **状态**：resolved
+
+### GAP-059 · 完全缺失定时任务存储与主进程调度器
+
+- **严重级**：P1（核心能力缺失）
+- **维度**：DB + 主进程
+- **基线依据**：`automation.modal.statusActive`=`运行中`/`statusPaused`=`已暂停`/`statusEnded`=`已结束`、`card.pauseTask`=`暂停任务`、`card.resumeTask`=`开启任务`、`modal.startedAt`=`创建于 {date}`、`modal.runCount`=`{count} 次运行`、`modal.deleteConfirm`=`确认删除该定时任务？`；`runGroup.nextRun`=`下一次运行 {time}`、`card.expiredHint`=`当前任务已过期`、`card.expiredRunHint`=`当前任务已过期，无法运行`、`row.onceOnly`=`单次执行`。
+- **现状**：DB 无 `automations` / `automation_runs` 表；主进程无调度循环，「到点自动执行」这一**整个能力不存在**；关窗即丢任务。
+- **期望**：DB 新增两表（含 `next_run_at` 与 `enabled` 索引）+ 全套 CRUD（`saveAutomation` 落库时**重算** `nextRunAt`；归档同时清空 `next_run_at` 并停用；删除任务**级联**删除其记录；批量删除返回 `failed[]`）；主进程 `src/main/automation.ts` 提供 **30s 轮询** `tick()` + `startScheduler()/stopScheduler()`，到期任务创建**真实会话**（`origin='workbuddyApp'`）→ 写入提示词 → `streamChat` → 落助手回复 → 归类错误（`errorCode==='3002'` → `network`）→ 产出 `evidence`（工具名匹配 `write|edit|create|delete|move|rename` 记 `localFileMutation`）→ 持久化运行记录；**单次任务执行后自动停用**；`RUN_TIMEOUT_MS = 10 分钟`；并发去重（`runningIds`）；headless 场景**审批一律拒绝、提问一律跳过**。
+- **验证方法**：DB 冒烟 —— 两表建表、CRUD 往返、`nextRunAt` 重算、归档清空、级联删除、批量删除失败列表、**旧库打开时自动建表且可读写**；主进程接线断言 —— 入口调用 `startScheduler`、`before-quit` 调 `stopScheduler`、IPC 全通道注册、preload 桥全成员暴露。
+- **修改文件**：src/shared/types.ts、src/main/store.ts、src/main/automation.ts（新增）、src/main/ipc.ts、src/main/index.ts、src/preload/index.ts
+- **状态**：resolved
+
+### GAP-060 · 完全缺失定时任务面板与创建表单
+
+- **严重级**：P1（核心能力缺失）
+- **维度**：渲染层
+- **基线依据**：`automation.tab.scheduledTasks`=`定时任务` / `tab.runRecords`=`运行记录`；`section.scheduled/inProgress/completed/archived`=`已安排`/`执行中`/`已完成`/`已归档`；`toolbar.search`=`搜索定时任务/记录`、`toolbar.filter`=`筛选`、`toolbar.refresh`=`刷新`、`toolbar.new`=`新建`；`modal.titleCreate`=`新建定时任务`、`modal.name`=`名称`、`modal.prompt`=`提示词`、`modal.schedule`=`执行频率`、`modal.deleteConfirm`=`确认删除该定时任务？`；表单权限用 `modal.permissionMode.default`=`需逐次确认` / `modal.permissionMode.fullAccess`=`免确认执行`，卡片标签用 `permission.default`=`默认权限` / `permission.fullAccess`=`完全访问权限（推荐）`；`modal.executionNoticeText`=`定时任务执行时，请勿关闭电脑或退出客户端，否则任务将无法正常执行`。
+- **现状**：顶栏无入口、无面板、无表单。用户**无法创建、查看、暂停、编辑或删除任何定时任务**。
+- **期望**：新增 `AutomationPanel.tsx`（全屏面板）：双 Tab（定时任务 / 运行记录）；任务卡片按 `section.*` 四组分区；工具栏含搜索/状态筛选/来源筛选/刷新/新建；卡片操作 立即运行 / 暂停任务 / 开启任务 / 编辑 / 归档 / 删除（**二次确认**用 `modal.deleteConfirm`）；内联 `AutomationForm`：名称、提示词、8 类频率 chip + 各自的细节控件（时间、星期、每月日期、月份、单次日期、间隔）、权限 chip、执行提示、实时计划摘要、保存前校验（失败**不关表单**并展示原文提示）；顶栏 ⏱ 入口 + Esc 关闭。
+- **验证方法**：运行时冒烟 —— 顶栏入口打开面板；标题/双 Tab/四分组渲染；状态筛选（`已启用` 仅剩启用项、`已暂停` 含一次性任务）；卡片暂停→DB `enabled=false`、恢复→`true`；新建表单打开、频率 chip 含「每天/单次任务/按间隔」、权限 chip 含「需逐次确认」与「完全访问权限（推荐）」、默认摘要为「每天 09:00」、空名保存被拦截且表单不关、切「每周」出现星期选择、选「周一」后摘要含「周一」、保存后**真实落库**（`kind=weekly`、`weekdays` 含 `MO`、`enabled=true`、`nextRunAt` 已算）；删除二次确认后 DB 中消失；Esc 关闭面板。
+- **修改文件**：AutomationPanel.tsx（新增）、src/renderer/src/App.tsx、src/renderer/src/i18n/index.ts、src/renderer/src/styles/global.css
+- **状态**：resolved
+
+### GAP-061 · 完全缺失运行记录视图与失败分因
+
+- **严重级**：P1（核心能力缺失）
+- **维度**：DB + 主进程 + 渲染层
+- **基线依据**：`automation.records.column.*`（`name`=`任务名称`、`status`=`状态`、`time`=`运行时间`、`duration`=`耗时`、`type`=`任务类型`、`actions`=`操作`）；`runGroup.date.*`（`today`=`今天`、`yesterday`=`昨天`、`tomorrow`=`明天`、`monthDay`=`{month}月{day}日`、`fullDate`=`{year}年{month}月{day}日`）；`run.status.pending/timeout/cancelled`=`待执行`/`超时`/`已取消`；**失败分因 51 条**（`error.reason.*` 26 + `detail.reason.*` 25，如 `networkUnavailable`=`网络连接异常，任务未能开始执行，请在网络恢复后重试。`、`runTimeout`=`任务运行超时已停止，请缩小任务范围后再试。`、`sessionStuck`=`任务长时间未结束，系统已自动停止本次运行。`、`recoveryFailed`=`原定时间设备未在线，重试仍未成功。`）；`runGroup.viewAll`=`查看全部`、`runGroup.collapse`=`收起`、`runGroup.continueChat`=`继续对话`。
+- **现状**：即便有任务定义也**看不到执行历史** —— 跑成功与否、失败在哪一步、耗时多久全部不可见；`reason` 概念不存在，无从分因。
+- **期望**：DB `automation_runs` 落 `status/reason/summary/evidence/error/duration`；主进程提供运行记录列表、归档、删除 IPC；渲染层运行记录页按**日期分组**（今天/昨天/…）渲染，每行显示任务名 + 状态 + 耗时 + 失败原因文案（由 `reason` 映射 i18n 键），支持搜索过滤（无匹配显示空态），并提供「查看全部 / 收起」。
+- **验证方法**：运行时冒烟 —— 切换到运行记录页、记录行渲染、含失败记录且**分因文案渲染**、含成功记录状态、**按日期分组**、搜索无匹配显示空态、搜索「每日简报」后有结果。
+- **修改文件**：src/main/store.ts、src/main/ipc.ts、src/preload/index.ts、AutomationPanel.tsx、i18n
+- **状态**：resolved
+
+---
+
+> 闭环状态（第十一轮）：GAP-058 / 059 / 060 / 061 全部 **resolved 并复检通过**。
+>
+> - 逻辑冒烟 `smoke-r11-logic.mjs`：**129/129 通过**（八类 `nextRun` 推导、摘要模板逐字比对、8 条校验键名、星期聚合、类型定义、面板/表单结构、App 接线、CSS 类名等）。
+> - DB 冒烟 `smoke-r11-db.cjs`：**49/49 通过**（两表建表、任务 CRUD、`nextRunAt` 重算、归档清空、级联删除、批量删除失败列表、运行记录往返与归档删除、**旧库自动建表且可读写**）。
+> - 运行时冒烟 `smoke-r11.cjs`：**50/50 通过**，渲染层 **0 控制台报错**；真实 UI 路径下验证了入口/面板/双 Tab/四分组、状态筛选、暂停恢复真实落库、新建表单全流程（频率切换、权限 chip、摘要、校验拦截、**真实落库**）、**立即运行真实调用 LLM 并落运行记录**（建会话 + 提示词 + 助手回复 + 证据）、运行记录页分组与搜索、删除二次确认、Esc 关闭。
+> - `npm run typecheck` 与 `npm run build` 均干净通过。
+>
+> **第十一轮 open 清零。** 本轮闭环过程中由运行时冒烟暴露 1 处**测试脚本预期错误**（断言表单权限 chip 文案为 `默认权限`，实际原文此处为 `需逐次确认`，`默认权限` 是卡片标签）—— 经回溯词典确认**实现无误**，已修正断言并补充反向断言。同时发现并补全 1 处**真实缺陷**：`automation.schedule.validation.onceDateRequired` 被实现引用但词典副本中缺失，已补 zh/en 两条。
+> deferred 累计：GAP-007（IM 渠道 / 遥测 / 守护进程，新增同源子域 `automation.datasource.*` 147 条 + `automation.modal.wecomBotSource.*` 28 条）、GAP-011（monaco 代码审阅器）、GAP-049 代码库来源工作空间（Git 集成）、`conversation.shareFile`（119 条，属协同域 collab）。

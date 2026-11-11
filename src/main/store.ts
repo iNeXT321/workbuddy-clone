@@ -7,8 +7,11 @@ import type {
   Conversation,
   ChatMessage,
   SessionSeparator,
-  ConversationOrigin
+  ConversationOrigin,
+  Automation,
+  AutomationRun
 } from '../shared/types'
+import { nextRun } from '../shared/schedule'
 
 /**
  * 本地存储层 —— 对齐 WorkBuddy 本体的 node:sqlite 用法：
@@ -69,6 +72,41 @@ export class Store {
         permission TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_separators_conv ON separators(conversation_id);
+      -- 定时任务（对齐 automation.*）：schedule / workspaces / evidence 以 JSON 存储
+      CREATE TABLE IF NOT EXISTS automations (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        prompt TEXT NOT NULL,
+        schedule TEXT NOT NULL,
+        permission TEXT,
+        delivery_target TEXT,
+        workspaces TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        archived INTEGER NOT NULL DEFAULT 0,
+        env TEXT,
+        last_run_at INTEGER,
+        next_run_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_automations_enabled ON automations(enabled);
+      -- 定时任务运行记录（对齐 automation.records.* / run.*）
+      CREATE TABLE IF NOT EXISTS automation_runs (
+        id TEXT PRIMARY KEY,
+        automation_id TEXT NOT NULL,
+        task_name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        reason TEXT,
+        started_at INTEGER NOT NULL,
+        finished_at INTEGER,
+        conversation_id TEXT,
+        summary TEXT,
+        evidence TEXT,
+        error TEXT,
+        archived INTEGER NOT NULL DEFAULT 0,
+        test INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS idx_runs_automation ON automation_runs(automation_id);
     `)
 
     // 兼容旧库：老版本 messages 表无 attachments 列，补列（ALTER 幂等失败则忽略）
@@ -319,6 +357,224 @@ export class Store {
     this.db
       .prepare('DELETE FROM separators WHERE conversation_id = ? AND created_at >= ?')
       .run(conversationId, timestamp)
+  }
+
+  // ---------- 定时任务（对齐 automation.*） ----------
+  /** 列出定时任务 —— `archived` 为 true 时返回归档项（对齐 action.archive / empty.archived） */
+  listAutomations(includeArchived = false): Automation[] {
+    const rows = this.db
+      .prepare(
+        includeArchived
+          ? 'SELECT * FROM automations ORDER BY created_at DESC'
+          : 'SELECT * FROM automations WHERE archived = 0 ORDER BY created_at DESC'
+      )
+      .all() as Array<Record<string, unknown>>
+    return rows.map((r) => this.rowToAutomation(r))
+  }
+
+  getAutomation(id: string): Automation | null {
+    const row = this.db.prepare('SELECT * FROM automations WHERE id = ?').get(id) as
+      | Record<string, unknown>
+      | undefined
+    return row ? this.rowToAutomation(row) : null
+  }
+
+  private rowToAutomation(r: Record<string, unknown>): Automation {
+    return {
+      id: String(r.id),
+      name: String(r.name),
+      prompt: String(r.prompt),
+      schedule: JSON.parse(String(r.schedule)) as Automation['schedule'],
+      permission: (r.permission as Automation['permission']) ?? 'default',
+      deliveryTarget: (r.delivery_target as string) ?? undefined,
+      workspaces: r.workspaces ? (JSON.parse(String(r.workspaces)) as string[]) : undefined,
+      enabled: !!r.enabled,
+      archived: !!r.archived,
+      env: (r.env as Automation['env']) ?? 'local',
+      lastRunAt: r.last_run_at === null || r.last_run_at === undefined ? undefined : Number(r.last_run_at),
+      nextRunAt: r.next_run_at === null || r.next_run_at === undefined ? undefined : Number(r.next_run_at),
+      createdAt: Number(r.created_at),
+      updatedAt: Number(r.updated_at)
+    }
+  }
+
+  /**
+   * 新建 / 保存定时任务 —— 传入 id 存在则更新，否则插入（对齐 toast.createSuccess / saved）。
+   * 自动重算 nextRunAt（对齐 row.startsIn `{time}执行`）。
+   */
+  saveAutomation(input: Omit<Automation, 'createdAt' | 'updatedAt'> & { createdAt?: number }): Automation {
+    const now = Date.now()
+    const existing = this.getAutomation(input.id)
+    const next = input.enabled ? nextRun(input.schedule, now) : undefined
+    if (existing) {
+      this.db
+        .prepare(
+          `UPDATE automations SET name=?, prompt=?, schedule=?, permission=?, delivery_target=?,
+           workspaces=?, enabled=?, archived=?, env=?, next_run_at=?, updated_at=? WHERE id=?`
+        )
+        .run(
+          input.name,
+          input.prompt,
+          JSON.stringify(input.schedule),
+          input.permission,
+          input.deliveryTarget ?? null,
+          input.workspaces ? JSON.stringify(input.workspaces) : null,
+          input.enabled ? 1 : 0,
+          input.archived ? 1 : 0,
+          input.env ?? 'local',
+          next ?? null,
+          now,
+          input.id
+        )
+    } else {
+      this.db
+        .prepare(
+          `INSERT INTO automations (id, name, prompt, schedule, permission, delivery_target, workspaces,
+           enabled, archived, env, last_run_at, next_run_at, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        )
+        .run(
+          input.id,
+          input.name,
+          input.prompt,
+          JSON.stringify(input.schedule),
+          input.permission,
+          input.deliveryTarget ?? null,
+          input.workspaces ? JSON.stringify(input.workspaces) : null,
+          input.enabled ? 1 : 0,
+          input.archived ? 1 : 0,
+          input.env ?? 'local',
+          input.lastRunAt ?? null,
+          next ?? null,
+          input.createdAt ?? now,
+          now
+        )
+    }
+    return this.getAutomation(input.id)!
+  }
+
+  /** 启停 —— 对齐 toast.enabled / toast.paused;恢复时重算 nextRunAt */
+  setAutomationEnabled(id: string, enabled: boolean): Automation | null {
+    const a = this.getAutomation(id)
+    if (!a) return null
+    return this.saveAutomation({ ...a, enabled })
+  }
+
+  /** 归档 / 取消归档 —— 对齐 action.archive / action.unarchive / toast.archived */
+  setAutomationArchived(id: string, archived: boolean): Automation | null {
+    const a = this.getAutomation(id)
+    if (!a) return null
+    if (archived) {
+      this.db.prepare('UPDATE automations SET archived = 1, enabled = 0, next_run_at = NULL, updated_at = ? WHERE id = ?').run(Date.now(), id)
+      return this.getAutomation(id)
+    }
+    return this.saveAutomation({ ...a, archived: false })
+  }
+
+  /** 删除定时任务 —— 对齐 delete.title / delete.description（记录一并清理） */
+  deleteAutomation(id: string): void {
+    this.db.prepare('DELETE FROM automation_runs WHERE automation_id = ?').run(id)
+    this.db.prepare('DELETE FROM automations WHERE id = ?').run(id)
+  }
+
+  /** 批量删除 —— 对齐 batch.deleteResult.allSucceeded / partial */
+  deleteAutomations(ids: string[]): { success: number; failed: string[] } {
+    let success = 0
+    const failed: string[] = []
+    for (const id of ids) {
+      const a = this.getAutomation(id)
+      if (!a) {
+        failed.push(id)
+        continue
+      }
+      this.deleteAutomation(id)
+      success++
+    }
+    return { success, failed }
+  }
+
+  /** 到点待执行的定时任务 —— 供调度器轮询（enabled 且 nextRunAt <= now） */
+  dueAutomations(now: number = Date.now()): Automation[] {
+    const rows = this.db
+      .prepare('SELECT * FROM automations WHERE enabled = 1 AND archived = 0 AND next_run_at IS NOT NULL AND next_run_at <= ?')
+      .all(now) as Array<Record<string, unknown>>
+    return rows.map((r) => this.rowToAutomation(r))
+  }
+
+  /** 标记已执行并推进 nextRunAt（once 类型执行后自动停用，对齐 onceOnly 语义） */
+  markAutomationRun(id: string, runAt: number): void {
+    const a = this.getAutomation(id)
+    if (!a) return
+    const next = a.schedule.kind === 'once' ? undefined : nextRun(a.schedule, runAt)
+    this.db
+      .prepare('UPDATE automations SET last_run_at = ?, next_run_at = ?, enabled = ?, updated_at = ? WHERE id = ?')
+      .run(runAt, next ?? null, next === undefined ? 0 : 1, Date.now(), id)
+  }
+
+  // ---------- 运行记录（对齐 automation.records.* / run.* / detail.*） ----------
+  addAutomationRun(run: AutomationRun): void {
+    this.db
+      .prepare(
+        `INSERT INTO automation_runs (id, automation_id, task_name, status, reason, started_at, finished_at,
+         conversation_id, summary, evidence, error, archived, test) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET status=excluded.status, reason=excluded.reason, finished_at=excluded.finished_at,
+           conversation_id=excluded.conversation_id, summary=excluded.summary, evidence=excluded.evidence,
+           error=excluded.error, archived=excluded.archived`
+      )
+      .run(
+        run.id,
+        run.automationId,
+        run.taskName,
+        run.status,
+        run.reason ?? null,
+        run.startedAt,
+        run.finishedAt ?? null,
+        run.conversationId ?? null,
+        run.summary ?? null,
+        run.evidence ? JSON.stringify(run.evidence) : null,
+        run.error ?? null,
+        run.archived ? 1 : 0,
+        run.test ? 1 : 0
+      )
+  }
+
+  private rowToRun(r: Record<string, unknown>): AutomationRun {
+    return {
+      id: String(r.id),
+      automationId: String(r.automation_id),
+      taskName: String(r.task_name),
+      status: r.status as AutomationRun['status'],
+      reason: (r.reason as string) ?? undefined,
+      startedAt: Number(r.started_at),
+      finishedAt: r.finished_at === null || r.finished_at === undefined ? undefined : Number(r.finished_at),
+      conversationId: (r.conversation_id as string) ?? undefined,
+      summary: (r.summary as string) ?? undefined,
+      evidence: r.evidence ? (JSON.parse(String(r.evidence)) as Automation['schedule'] extends never ? never : AutomationRun['evidence']) : undefined,
+      error: (r.error as string) ?? undefined,
+      archived: !!r.archived,
+      test: !!r.test
+    }
+  }
+
+  listAutomationRuns(automationId?: string, includeArchived = false): AutomationRun[] {
+    const where: string[] = []
+    const params: unknown[] = []
+    if (automationId) {
+      where.push('automation_id = ?')
+      params.push(automationId)
+    }
+    if (!includeArchived) where.push('archived = 0')
+    const sql = `SELECT * FROM automation_runs ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY started_at DESC`
+    const rows = this.db.prepare(sql).all(...(params as never[])) as Array<Record<string, unknown>>
+    return rows.map((r) => this.rowToRun(r))
+  }
+
+  setRunArchived(runId: string, archived: boolean): void {
+    this.db.prepare('UPDATE automation_runs SET archived = ? WHERE id = ?').run(archived ? 1 : 0, runId)
+  }
+
+  deleteAutomationRun(runId: string): void {
+    this.db.prepare('DELETE FROM automation_runs WHERE id = ?').run(runId)
   }
 
   getConversation(id: string): Conversation | null {

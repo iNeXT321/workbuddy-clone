@@ -9,6 +9,7 @@ import SettingsPanel from './components/SettingsPanel'
 import TerminalPanel from './components/TerminalPanel'
 import PermissionDialog from './components/PermissionDialog'
 import TaskSearchOverlay from './components/TaskSearchOverlay'
+import AutomationPanel from './components/AutomationPanel'
 import Toaster from './components/Toaster'
 
 export default function App() {
@@ -29,6 +30,8 @@ export default function App() {
   const [wsError, setWsError] = useState('')
   // 切换文件确认弹窗（对齐 chat.docTabSwitch.dialog.*）
   const [pendingTab, setPendingTab] = useState<string | null>(null)
+  // 定时任务面板（对齐 automation.*）
+  const [showAutomation, setShowAutomation] = useState(false)
 
   // 新建工作空间：调主进程真实建目录，失败按 taskStarter.createWorkspace.toast.failed 提示
   const createWorkspace = async () => {
@@ -76,6 +79,7 @@ export default function App() {
       // Esc：停止生成 / 关闭浮层
       if (e.key === 'Escape') {
         if (showTaskSearch) return setShowTaskSearch(false)
+        if (showAutomation) return setShowAutomation(false)
         if (showCreateWs) return setShowCreateWs(false)
         if (showPermission) return setShowPermission(false)
         if (showSettings) return setShowSettings(false)
@@ -107,7 +111,7 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showSettings, app.streaming, showTaskSearch, showCreateWs])
+  }, [showSettings, app.streaming, showTaskSearch, showCreateWs, showAutomation])
 
   return (
     <div className="app">
@@ -136,6 +140,9 @@ export default function App() {
             {app.conversations.find((c) => c.id === app.currentId)?.title || t('sidebar.new')}
           </div>
           <div className="topbar-actions">
+            <button className="icon-btn" onClick={() => setShowAutomation(true)} title={t('automation.title')}>
+              ⏱
+            </button>
             <button className="icon-btn" onClick={() => void app.startNewSession()} title={t('sessionSeparator.label')}>
               ✦
             </button>
@@ -237,6 +244,7 @@ export default function App() {
           onSelect={requestSelect}
         />
       )}
+      {showAutomation && <AutomationPanel onClose={() => setShowAutomation(false)} />}
       {showCreateWs && (
         <div className="modal-overlay" onClick={() => setShowCreateWs(false)}>
           <div className="modal dialog" onClick={(e) => e.stopPropagation()}>
