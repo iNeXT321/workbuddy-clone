@@ -14,12 +14,14 @@ import type {
   ToolCall,
   Conversation,
   Automation,
-  Schedule
+  Schedule,
+  ScheduleEvent
 } from '../shared/types'
 import { getStore } from './store'
 import { streamChat, classifyError } from './llm'
 import { runAutomation } from './automation'
 import { nextRun } from '../shared/schedule'
+import type { CalendarDefaults } from '../shared/scheduleEvent'
 import { createWorkspace, listWorkspaces, workspaceExists } from './workspace'
 import { MAX_SESSIONS, approvalToolFor, APPROVAL_RULES } from '../shared/errorCodes'
 
@@ -70,6 +72,13 @@ export function clearSessionDecisions(conversationId: string): void {
 export function broadcastAutomationChanged(): void {
   for (const w of BrowserWindow.getAllWindows()) {
     if (!w.isDestroyed()) w.webContents.send(IPC.automationChanged)
+  }
+}
+
+/** 日程变更广播（主进程 → 渲染层）—— 对齐 home.schedule.* 的多视图同步 */
+export function broadcastEventChanged(): void {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (!w.isDestroyed()) w.webContents.send(IPC.eventChanged)
   }
 }
 
@@ -485,6 +494,35 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC.automationNextRun, (_e, schedule: Schedule) => {
     const at = nextRun(schedule, Date.now())
     return { nextRunAt: at }
+  })
+
+  // ---------- 日程 / 日历（对齐 home.schedule.*） ----------
+  ipcMain.handle(
+    IPC.eventList,
+    (_e, opts?: { from?: number; to?: number; source?: string; includeCancelled?: boolean }) =>
+      getStore().listEvents(opts ?? {})
+  )
+
+  ipcMain.handle(IPC.eventGet, (_e, id: string) => getStore().getEvent(id))
+
+  ipcMain.handle(IPC.eventSave, (_e, input: ScheduleEvent) => {
+    const saved = getStore().saveEvent(input)
+    broadcastEventChanged()
+    return saved
+  })
+
+  ipcMain.handle(IPC.eventDelete, (_e, id: string) => {
+    const ok = getStore().deleteEvent(id)
+    broadcastEventChanged()
+    return ok
+  })
+
+  ipcMain.handle(IPC.eventSettings, () => getStore().getCalendarDefaults())
+
+  ipcMain.handle(IPC.eventSettingsSave, (_e, patch: Partial<CalendarDefaults>) => {
+    const next = getStore().saveCalendarDefaults(patch)
+    broadcastEventChanged()
+    return next
   })
 }
 

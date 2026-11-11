@@ -160,6 +160,78 @@ export type ConversationStatus = 'failed' | 'pending' | 'unread' | 'working'
 /** 任务来源端 —— 对齐 `conversation.origin.*`：web / workbuddyApp / workbuddyMp */
 export type ConversationOrigin = 'web' | 'workbuddyApp' | 'workbuddyMp'
 
+// ==================== 日程 / 日历（对齐 home.schedule.*，676 条） ====================
+
+/**
+ * 日程状态 —— 对齐 `home.schedule.summary.status.*`（upcoming / ongoing / ended / cancelled）。
+ * 由起止时间推导（cancelled 除外，其为持久化字段）。
+ */
+export type EventStatus = 'upcoming' | 'ongoing' | 'ended' | 'cancelled'
+
+/** 提醒选项 —— 对齐 `home.schedule.create.reminder.*`（none / atStart / 15 / 60 / 1440 分钟） */
+export type EventReminder = 'none' | 'atStart' | '15' | '60' | '1440'
+
+/** 参与人响应 —— 对齐 `home.schedule.rsvp.*`（accept / tentative / decline / needsAction） */
+export type RsvpStatus = 'accept' | 'tentative' | 'decline' | 'needsAction'
+
+/**
+ * 日程归属来源 —— 对齐 `home.schedule.sidebar.*` 的三个筛选组
+ * （managed=我管理的 / channels=所在频道 / subscribed=我订阅的）。
+ */
+export type EventSourceKind = 'managed' | 'channels' | 'subscribed' | 'personal'
+
+/** 参与人 —— 对齐 `home.schedule.summary.participantCount` 与 `detail.field.participants` */
+export interface EventParticipant {
+  name: string
+  /** 我的参与状态（对齐 `home.schedule.rsvp.*`） */
+  rsvp?: RsvpStatus
+  /** 组织者角标（对齐 `home.schedule.summary.organizerBadge`） */
+  organizer?: boolean
+}
+
+/**
+ * 日程 —— 对齐 `home.schedule.field.*`（title/start/end/location/organizer/calendar/
+ * attachment/reminder/description/status/time/source/participants/kind/delivery）。
+ */
+export interface ScheduleEvent {
+  id: string
+  title: string
+  /** 开始时间戳（毫秒，本地时区语义） */
+  startAt: number
+  /** 结束时间戳（毫秒）—— 跨天由 endAt 自然表达 */
+  endAt: number
+  /** 全天日程（对齐 `summary.whenAllDay`） */
+  allDay?: boolean
+  location?: string
+  description?: string
+  organizer?: string
+  /** 参与人列表 —— 空数组时渲染 `summary.onlySelf`（仅自己参与） */
+  participants?: EventParticipant[]
+  /** 提醒 —— 对齐 `create.reminder.*` */
+  reminder?: EventReminder
+  /** 备注 / 关联的附件名（对齐 `field.attachment` / `detail.attachments`） */
+  attachments?: string[]
+  /** 归属日历名（对齐 `field.calendar`：个人日程 / 频道日程） */
+  calendar?: string
+  /** 归属来源组 —— 对齐 `sidebar.managed/channels/subscribed` */
+  source?: EventSourceKind
+  /** 类型 —— 个人日程 / 频道日程（对齐 `summary.calendarPersonal/calendarChannel`） */
+  kind?: 'personal' | 'channel'
+  /** 已取消（对齐 `summary.status.cancelled`） */
+  cancelled?: boolean
+  /**
+   * 重复规则 —— 对齐 `occurrence.scope.*`（仅本次 / 本次及以后 / 全部日程）。
+   * 结构定义在 `scheduleEvent.ts` 的 `EventRepeat`，此处内联以免循环依赖。
+   */
+  repeat?: {
+    kind: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'
+    weekdays?: number[]
+    until?: number
+  }
+  createdAt: number
+  updatedAt: number
+}
+
 // ==================== 定时任务（对齐 automation.*，846 条） ====================
 
 /**
@@ -463,6 +535,14 @@ export const IPC = {
   automationRunDelete: 'wb:automation:run-delete',
   automationNextRun: 'wb:automation:next-run',
   automationChanged: 'wb:automation:changed',
+  // 日程 / 日历（对齐 home.schedule.*）
+  eventList: 'wb:event:list',
+  eventGet: 'wb:event:get',
+  eventSave: 'wb:event:save',
+  eventDelete: 'wb:event:delete',
+  eventSettings: 'wb:event:settings',
+  eventSettingsSave: 'wb:event:settings:save',
+  eventChanged: 'wb:event:changed',
   // 内置终端
   termOpen: 'wb:terminal:open',
   termWrite: 'wb:terminal:write',

@@ -13,8 +13,10 @@ import type {
   PermissionLevel,
   Automation,
   AutomationRun,
-  Schedule
+  Schedule,
+  ScheduleEvent
 } from '../shared/types'
+import type { CalendarDefaults } from '../shared/scheduleEvent'
 
 /**
  * preload 桥接层 —— 对齐 WorkBuddy 的 contextBridge 模式：
@@ -88,6 +90,15 @@ export interface WorkbuddyBridge {
   automationNextRun(schedule: Schedule): Promise<{ nextRunAt?: number }>
   onAutomationChanged(cb: () => void): () => void
 
+  // 日程 / 日历（对齐 home.schedule.*）
+  eventList(opts?: { from?: number; to?: number; source?: string; includeCancelled?: boolean }): Promise<ScheduleEvent[]>
+  eventGet(id: string): Promise<ScheduleEvent | null>
+  eventSave(input: ScheduleEvent): Promise<ScheduleEvent>
+  eventDelete(id: string): Promise<boolean>
+  eventSettings(): Promise<CalendarDefaults>
+  eventSettingsSave(patch: Partial<CalendarDefaults>): Promise<CalendarDefaults>
+  onEventChanged(cb: () => void): () => void
+
   // 内置终端
   termOpen(conversationId: string): Promise<{ ok: boolean; shell?: string }>
   termWrite(conversationId: string, data: string): Promise<{ ok: boolean }>
@@ -160,6 +171,18 @@ const bridge: WorkbuddyBridge = {
     const listener = () => cb()
     ipcRenderer.on(IPC.automationChanged, listener)
     return () => ipcRenderer.removeListener(IPC.automationChanged, listener)
+  },
+
+  eventList: (opts) => ipcRenderer.invoke(IPC.eventList, opts),
+  eventGet: (id) => ipcRenderer.invoke(IPC.eventGet, id),
+  eventSave: (input) => ipcRenderer.invoke(IPC.eventSave, input),
+  eventDelete: (id) => ipcRenderer.invoke(IPC.eventDelete, id),
+  eventSettings: () => ipcRenderer.invoke(IPC.eventSettings),
+  eventSettingsSave: (patch) => ipcRenderer.invoke(IPC.eventSettingsSave, patch),
+  onEventChanged: (cb) => {
+    const listener = () => cb()
+    ipcRenderer.on(IPC.eventChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.eventChanged, listener)
   },
 
   termOpen: (conversationId) => ipcRenderer.invoke(IPC.termOpen, conversationId),

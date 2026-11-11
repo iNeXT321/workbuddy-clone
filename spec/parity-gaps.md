@@ -882,3 +882,75 @@
 >
 > **第十一轮 open 清零。** 本轮闭环过程中由运行时冒烟暴露 1 处**测试脚本预期错误**（断言表单权限 chip 文案为 `默认权限`，实际原文此处为 `需逐次确认`，`默认权限` 是卡片标签）—— 经回溯词典确认**实现无误**，已修正断言并补充反向断言。同时发现并补全 1 处**真实缺陷**：`automation.schedule.validation.onceDateRequired` 被实现引用但词典副本中缺失，已补 zh/en 两条。
 > deferred 累计：GAP-007（IM 渠道 / 遥测 / 守护进程，新增同源子域 `automation.datasource.*` 147 条 + `automation.modal.wecomBotSource.*` 28 条）、GAP-011（monaco 代码审阅器）、GAP-049 代码库来源工作空间（Git 集成）、`conversation.shareFile`（119 条，属协同域 collab）。
+
+---
+
+## 第十二轮 · 日程 / 日历域（GAP-062 ~ 065）
+
+> 域选择依据：按未覆盖命名空间体量排序 —— `home`(676) > `colleagues`(573) > `skills`(513) > `myFiles`(331)。其中 `home` 的 676 条**全部**属 `home.schedule.*`（`home.aiDisclaimer` 除外），是一个边界自洽的完整业务域（日历），且原文对其未实现部分有显式桩标记，可界定范围，故本轮选此。第十一轮（automation）与本轮（home.schedule）**语义无关但命名易混**：前者是「30s 轮询的定时任务调度」，后者是「用户自建日程的日历」，代码路径与模型完全隔离。
+
+### GAP-062 · 完全缺失日程数据模型与摘要/重复/状态推导
+
+- **严重级**：P1（核心能力缺失）
+- **维度**：共享层（纯计算）
+- **基线依据**：`home.schedule.summary.status.{upcoming,ongoing,ended,cancelled}`=`待开始`/`进行中`/`已结束`/`已取消`；`summary.kindLine`=`日程 {status}`；`summary.when`=`{year} 年 {month} 月 {day} 日 · {startClock}—{endClock}`、`whenCrossDay`=`{year} 年 {month} 月 {day} 日 {startClock} — {endMonth} 月 {endDay} 日 {endClock}`、`whenAllDay`=`{year} 年 {month} 月 {day} 日 · 全天`、`whenAllDaySpan`；`create.reminder.{none,atStart,15,60,1440}`=`无提醒`/`开始时`/`15 分钟前`/`1 小时前`/`1 天前`；`create.duration.{minutes,hour,hours}`=`{count} 分钟`/`1 小时`/`{count} 小时`；`create.recurrence.{none,daily,weekly,monthly,yearly}`；`occurrence.scope.{this,thisAndFuture,entire}`=`仅本次`/`本次及以后`/`全部日程`；`summary.participantCount`=`已邀请 {count} 位参与人：`、`onlySelf`=`仅自己参与`；`rsvp.{accept,tentative,decline,needsAction}`；`sidebar.monthTitle`=`{year}年{month}月`、`weekday.0`~`6`；`settings.{field.duration,duration.*,timedReminder.*,allDayReminder.*,field.weekStart,field.showLunar}`。
+- **现状**：复刻体无任何日程概念 —— 无 `ScheduleEvent` 类型、无状态推导、无摘要文案、无重复展开；用户无法表达「某天有个会」。
+- **期望**：新增 `src/shared/types.ts` 日程类型（`EventStatus` / `EventReminder` / `RsvpStatus` / `EventSourceKind` / `EventParticipant` / `ScheduleEvent`，含 `repeat: {kind, weekdays?, until?}` 保留**系列粒度**）；新增 `src/shared/scheduleEvent.ts` 纯计算模块：提醒偏移与触发时刻、状态推导（`cancelled` 优先于时间）、`whenLabel` 四模板**逐字**（em dash 紧贴 vs ` — ` 带空格，不可统一）、`durationLabel` 三态、`reminderLabel`（`none` 用 `summary.reminderNone`，其余复用表单档位名）、`participantsLabel`、`kindLine`、`scopeLabel`、`expandOccurrences`（daily/weekly/monthly/yearly + `until` + 区间交叠 + 月末回退 + **起始场次早于区间也须逐步推进**）、`monthGrid` 42 格、`eventsOnDay` 跨天归格（全天优先排序）、`toLocalInput`/`fromLocalInput` 往返。
+- **验证方法**：逻辑冒烟 `smoke-r12-logic.mjs` —— 提醒偏移 5 档、状态 4 态含边界（`now==startAt`→ongoing、`now==endAt`→ended、`cancelled` 覆盖时间）、时间摘要四模板**正则逐字**断言（含 em dash 与「 年 」空格）、跨日/全天跨日、时长三态、参与人、重复展开（每日/每周按 `weekdays` 命中/每月/每年/`until`/区间交叠/月末 31→28 回退/不提前退出）、场次范围文案、月历网格 42 格与周首日偏移、跨天日程在区间中部仍命中、`datetime-local` 往返、默认设置常量。
+- **修改文件**：src/shared/types.ts、src/shared/scheduleEvent.ts（新增）
+- **状态**：resolved
+
+### GAP-063 · 完全缺失日程存储与 IPC 通道
+
+- **严重级**：P1（核心能力缺失）
+- **维度**：DB + 主进程
+- **基线依据**：`home.schedule.settings.subtitle`=`仅设置新建日程的默认行为。`（设置需持久化，且**只影响新建**）；`sidebar.deleteSuccess.{events,series}`=`已删除，取消了 {eventCount} 场单次日程`/`已删除，取消了 {seriesCount} 个重复系列`（删除需回报作用场次）；`delivery.*` 四态说明投递状态需落库；`searchFreshness`=`近期变更可能未出现在搜索中`（暗示增量同步）；`versionConflict`=`设置刚在其他端改过，已刷新为最新，请再保存一次`（设置需版本化读改）。
+- **现状**：DB 无 `schedule_events` 表；无日程 IPC 通道；preload 未暴露任何日历能力。关窗即丢。
+- **期望**：DB 新增 `schedule_events` 表（title/start_at/end_at/all_day/location/description/organizer/participants/reminder/attachments/calendar/source/kind/cancelled/repeat/created_at/updated_at）+ `idx_events_start(start_at,end_at)` 与 `idx_events_source(source)` 索引；`Store` 提供 `listEvents`（**区间交叠**语义 `start_at<=to AND end_at>=from`、来源过滤、`includeCancelled`、`start_at` 升序）、`getEvent`、`saveEvent`（**存在即更新不新增行**，`created_at` 不被覆盖；`repeat` 往返）、`deleteEvent`、`cancelEvent`、`getCalendarDefaults` / `saveCalendarDefaults`（kv 键 `calendarDefaults`，部分更新合并）；`ipc.ts` 注册 6 个 `wb:event:*` 通道（list/get/save/delete/settings/settings-save）且**每次写入广播变更**（多视图同步）；preload 暴露同成员（含 `onEventChanged` 返回退订函数）。
+- **验证方法**：DB 冒烟 `smoke-r12-db.cjs`（真实 Electron 内的 `node:sqlite`）—— 建表与初始空、CRUD 往返（含参与人/RSVP/提醒/来源）、更新不新增且 `createdAt` 不变、**区间交叠过滤**（当天/跨天/远期/过去/**长跨度日程在区间中部仍命中**）、来源过滤三态、升序、取消（默认不可见 + `includeCancelled` 可见 + 不删行 + 可恢复）、重复规则往返（weekly+weekdays+until，无重复为 undefined）、删除返回值与幂等、日历默认设置（默认值、保存、重读、**未改动项保留**、部分更新合并）、**旧库兼容**（仅 kv 表的旧库可打开并自动建表、可读写、设置可持久化）。逻辑冒烟另做静态接线断言（IPC 常量、handler 注册、preload 暴露、写入即广播）。
+- **修改文件**：src/main/store.ts、src/main/ipc.ts、src/preload/index.ts、src/shared/types.ts
+- **状态**：resolved
+
+### GAP-064 · 完全缺失日历侧栏与月视图
+
+- **严重级**：P1（核心能力缺失）
+- **维度**：渲染层
+- **基线依据**：`myCalendar`=`我的日历`、`viewAll`=`查看我的日历`、`back`=`返回`；`sidebar.monthTitle`=`{year}年{month}月`、`prevMonth`/`nextMonth`=`上个月`/`下个月`、`collapse`/`expand`=`收起日历`/`展开日历`；三来源分组 `sidebar.{myScheduleGroup,managed,channels,subscribed}`=`我的日程`/`我管理的`/`所在频道`/`我订阅的`；叠加开关 `sidebar.overlayPersonal`=`叠加我的日程`、`overlayMyTodos`=`叠加我的待办`；搜索 `searchPlaceholder`/`searchClear`/`searchEmpty`=`搜索日程`/`清除搜索`/`未找到匹配日程`；`today`=`今天 · {count} 件事`、`empty`=`今天没有安排`、`allDay`=`全天`；桩 `hint.notImplemented`=`暂未实现`、`hint.noContract`=`当前版本暂无接口，仅展示效果`；`sidebar.team`=`团队日历`。
+- **现状**：无日历视图 —— 用户看不到「某天有哪些事」，也无法按来源分组或搜索。
+- **期望**：新增 `SchedulePanel.tsx` 全屏面板：左侧栏含月标题 + 上/下月 + 收起/展开、**42 格月历网格**（周首日随设置偏移、今天高亮、选中态、有日程显示圆点、双击日格新建）、搜索框（含清除）、四分组筛选（全部 + 三来源）、叠加开关（勾选待办叠加渲染 `hint.notImplemented` 桩）；主区渲染选中日的日程列表（`sched-card`，状态类 `st-{upcoming,ongoing,ended,cancelled}`，全天显示「全天」且排在定时之前）；顶栏 `▤` 入口（`title`=我的日历）+ Esc 关闭。
+- **验证方法**：运行时冒烟 `smoke-r12.cjs` —— 顶栏入口 title 精确匹配并打开面板、面板标题「我的日历」、月标题 `{year}年{month}月`、42 格网格、7 格星期表头且首格「周日」（默认 `weekStart=0`）、今天高亮、日程日格圆点、选中态、下月/上月往返、收起后网格隐藏/展开恢复、主区渲染预置日程、全天排前且显示「全天」、卡片状态类、分组四按钮、筛选「所在频道」只剩频道日程且切回恢复、搜索无匹配空态/命中唯一/清除搜索、叠加开关两条、勾选待办叠加出现「暂未实现」、主区「团队日历 · 当前版本暂无接口，仅展示效果」桩。
+- **修改文件**：SchedulePanel.tsx（新增）、src/renderer/src/stores/useScheduleEvents.ts（新增）、src/renderer/src/App.tsx、src/renderer/src/i18n/index.ts、src/renderer/src/styles/global.css
+- **状态**：resolved
+
+### GAP-065 · 完全缺失日程创建/编辑表单、详情卡与日历设置
+
+- **严重级**：P1（核心能力缺失）
+- **维度**：渲染层
+- **基线依据**：`createTitle`=`创建日程`、`create.editTitle`=`编辑日程`、`create.formHint`=`表单与自然语言使用同一份日程字段。`、`create.submit`/`submitSave`=`创建日程`/`保存日程`、`create.start`/`end`/`duration`=`开始`/`结束`/`时长`；占位 `create.placeholder.{title,location,participants,description}`=`添加主题`/`添加地点`/`添加联系人、邮件地址`/`添加描述`；`field.{title,reminder,location,description}`、`create.field.{recurrence,participants}`；校验 `titleRequired`=`请填写标题`、`endAfterStart`=`结束时间需晚于开始时间`；详情 `detailTitle`=`日程详情`、`detail.close`=`关闭`、`summary.{kindLine,when,reminder,reminderNone,locationFallback,notesEmpty,notesEmptyHint,delete,edit,copyMeeting,copied}`、`rsvp.title`=`我的参与状态`、`detail.attachments`=`附件`、`delivery.{PENDING,SUCCEEDED}`→`detail.deliveryPending`=`待同步至 {count} 人`/`deliverySucceeded`=`已同步`；删除 `summary.deleteConfirmTitle`=`删除日程`、`deleteConfirmBody`=`删除后参与人会收到取消通知，这条日程从日历里消失。`、`sidebar.deleteSuccess.{events,series}`；设置 `settings.{entry,title,subtitle,save,field.duration,duration.*,field.timedReminder,timedReminder.*,field.allDayReminder,allDayReminder.*,field.weekStart,field.showLunar,sync.title}`；桩 `hint.{notImplemented,onlineMeetingUnavailable,meetingMinutesUnavailable,meetingRoom}`、`create.{meetingMinutesHint,onlineMeetingHint}`、`summary.noOnlineMeeting`。
+- **现状**：即便有数据模型也**无法创建/编辑/删除日程**，看不到详情与参与状态，没有日历设置。
+- **期望**：（a）创建/编辑表单 —— 标题、开始/结束（`datetime-local`，改开始**保时长**）、时长显示、全天开关、提醒 5 档 chip、重复 5 档 chip、地点、参与人（逗号/中文逗号分隔）、描述，占位符用 `create.placeholder.*`；保存前校验（空标题 → `titleRequired`；结束不晚于开始 → `endAfterStart`），失败**不关表单**；保存后 `creation.successTitle` 提示并自动打开详情卡。（b）详情卡 —— `kindLine` / `whenLabel` 逐字、提醒行、地点（空则 `locationFallback`）、参与人行 + 名单、投递状态（按未回执人数渲染 `deliveryPending` / 全回执则 `deliverySucceeded`）、组织者徽标、RSVP 三档可点**真实回执**（且**不连带修改他人**）、附件、说明（空则 `notesEmpty` 桩）、在线会议与会议室桩（`noOnlineMeeting` + `hint.onlineMeetingUnavailable`、`hint.meetingRoom`）、复制会议信息、编辑/删除/关闭。（c）删除二次确认用 `deleteConfirmTitle` / `deleteConfirmBody`，删除成功后按单次/系列分别报 `sidebar.deleteSuccess.events` / `.series`。（d）日历设置 —— 默认时长 6 档、非全天/全天默认提醒、每周第一天、显示农历，保存真实落库且**未改动项保留**；同步子域渲染 `settings.sync.title` + `hint.notImplemented` 桩。（e）对话框**互斥**：任一时刻只呈现一层（编辑 / 详情 / 删除确认 / 设置）；Esc **逐层**关闭（表单 → 删除确认 → 详情 → 面板）。（f）编辑已有时保留参与人 RSVP 回执（整体覆盖写不得清掉回执）。
+- **验证方法**：运行时冒烟 —— 表单打开与标题/提示、占位符对齐 `create.placeholder.*`（含地点与描述，独立于 `summary.*`）、提醒/重复 chip 文案、默认提醒「15 分钟前」与默认时长「1 小时」（取自日历设置）、会议纪要桩、空标题拦截且表单不关、改开始时间时长保持、真实落库（提醒/地点/参与人 2 人/初始 `needsAction`）、详情卡首行「日程 待开始」、时间行 em dash 正则、提醒行、参与人行含尾冒号、投递状态「待同步至 2 人」、描述渲染、两类桩、RSVP 标题与三档、RSVP 真实落库 + 他人不受影响 + chip 高亮 + 投递变「待同步至 1 人」、编辑回填与「仅改标题不丢 RSVP」、日历设置项全渲染 + 6 档 + 同步桩 + 真实落库 + 未改动项保留 + 周首日改后表头首格变「周一」、删除确认（层数=1、标题、正文）真实删除、Esc 逐层（删除确认上 Esc 退回列表不整层退出；详情上 Esc 只关内层保留面板；再 Esc 关面板）、数据一致性复核。
+- **修改文件**：SchedulePanel.tsx、src/renderer/src/App.tsx、src/renderer/src/i18n/index.ts、src/renderer/src/styles/global.css、src/shared/scheduleEvent.ts
+- **状态**：resolved
+
+---
+
+> 闭环状态（第十二轮）：GAP-062 / 063 / 064 / 065 全部 **resolved 并复检通过**。
+>
+> - 逻辑冒烟 `smoke-r12-logic.mjs`：**151/151 通过**（提醒偏移、状态四态与边界、时间摘要四模板逐字正则、时长三态、参与人、重复展开 10 项、场次范围、默认设置、`datetime-local` 往返、月历 42 格与周首日偏移、跨天归格、静态接线、i18n 键覆盖（静态 + 动态前缀 + 占位符一致性））。
+> - DB 冒烟 `smoke-r12-db.cjs`：**54/54 通过**（建表、CRUD 往返、更新不新增、区间交叠过滤含长跨度命中、来源过滤、排序、取消与可见性、重复往返、删除幂等、日历设置含部分更新合并、**旧库自动建表且可读写**）。
+> - 运行时冒烟 `smoke-r12.cjs`：**101/101 通过**，渲染层 **0 控制台报错**；真实 UI 路径下验证了入口/面板/侧栏/月历网格/分组筛选/搜索/叠加、创建表单全流程（默认值来自设置、占位符、校验拦截、真实落库）、详情卡逐字摘要与投递状态、RSVP 真实回执、编辑保留回执、日历设置真实落库与周首日联动、删除二次确认、Esc 逐层关闭、数据一致性。
+> - 回归：`smoke-r11-*`（逻辑 129/129、DB 49/49、运行时 50/50）、`smoke-r10-*`（逻辑 70/70、DB 20/20、运行时 33/33）**全绿**，0 控制台报错。
+> - `npm run typecheck` 与 `npm run build` 均干净通过。
+>
+> **第十二轮 open 清零。** 本轮闭环过程中由冒烟暴露并修复的**真实缺陷**共 6 处：
+> 1. `home.schedule.myScheduleGroup` 键名误写 —— 权威键在 `home.schedule.sidebar.myScheduleGroup`（词典实测），已修正。
+> 2. 表单三个占位符误用 `summary.*` 键（`summary.kind` / `summary.locationFallback` / `summary.onlySelf` / `summary.notesEmpty`）—— 原文另有独立一族 `create.placeholder.{title,location,participants,description}`，已改为正确键。
+> 3. 表单校验文案误用 `create.formHint` / `create.duration.customEnd` —— 原文顶层有专用 `titleRequired` / `endAfterStart`，已修正。
+> 4. RSVP **少了 toast**（原文该域无对应 toast）且多余调用；删除成功提示误用 `summary.delete` —— 原文按单次/系列分别用 `sidebar.deleteSuccess.events` / `.series`，已修正。
+> 5. 对话框可叠加（删除确认可与日历设置同时存在）、**Esc 会跳层**（一次按键同时关掉内层与面板）—— 原因为 App 全局 Esc 与面板各自处理同一事件；已改为对话框状态互斥 + 面板在 **capture 阶段** `stopImmediatePropagation` 接管 Esc，App 侧对 `showSchedule` 让出控制权。同时修正删除确认上的 Esc 语义（回到列表而非弹回详情）。
+> 6. `global.css` 存在**重复的 `sched-*` 样式块**（同一族类名写了两遍）—— 已删除后一份。
+>
+> 另修正 1 处**测试脚本自身缺陷**：第 15 节用 `document.querySelector('.sched-dialog .dialog-actions .btn')` 取按钮，命中详情卡第一个按钮（「删除日程」）而非「关闭」，导致后续删除确认叠加；且新建日程原以 `now+1h` 定位，在午夜附近会跨天使日视图看不到 —— 已改为按文本精确取按钮、并显式将日程锚在「明天 10:00–11:00」。
+>
+> deferred 累计：GAP-007（IM 渠道 / 遥测 / 守护进程，含 `automation.datasource.*` 147 条 + `automation.modal.wecomBotSource.*` 28 条）、GAP-011（monaco 代码审阅器）、GAP-049 代码库来源工作空间（Git 集成）、`conversation.shareFile`（119 条，属协同域 collab）、日程域外延子域（会议室预约约 60 条、腾讯会议在线会议、`settings.sync.*` 约 30 条、团队待办叠加、第三方日历约 40 条 —— 原文自身均标注未实现 / 未开放，复刻当前以桩提示对齐）。

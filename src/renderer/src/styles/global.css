@@ -2803,3 +2803,320 @@ body {
   font-size: 12px;
   color: var(--text-secondary);
 }
+
+/* ===== 日程 / 日历面板（对齐 home.schedule.*）===== */
+.sched-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+}
+.sched-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.sched-head-left,
+.sched-head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sched-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.sched-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.sched-side {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+.sched-side.collapsed {
+  width: 132px;
+}
+.sched-side-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sched-month-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.sched-month-nav {
+  display: flex;
+  gap: 2px;
+}
+.sched-mini-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: 4px;
+}
+.sched-mini-wday {
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+.sched-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.sched-mini-cell {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+}
+.sched-mini-cell:hover {
+  background: rgba(127, 127, 127, 0.12);
+}
+.sched-mini-cell.out {
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+.sched-mini-cell.today {
+  font-weight: 700;
+  color: var(--accent, #3b82f6);
+}
+.sched-mini-cell.sel {
+  background: var(--accent, #3b82f6);
+  color: #fff;
+}
+.sched-mini-dot {
+  position: absolute;
+  bottom: 3px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent, #3b82f6);
+}
+.sched-mini-cell.sel .sched-mini-dot {
+  background: #fff;
+}
+.sched-search {
+  display: flex;
+  gap: 6px;
+}
+.sched-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sched-group {
+  text-align: left;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.sched-group:hover {
+  background: rgba(127, 127, 127, 0.12);
+}
+.sched-group.active {
+  background: rgba(59, 130, 246, 0.14);
+  color: var(--accent, #3b82f6);
+  font-weight: 600;
+}
+.sched-overlays {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.sched-overlay {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.sched-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  overflow-y: auto;
+}
+.sched-main-info {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.sched-main-day {
+  font-size: 14px;
+  font-weight: 600;
+}
+.sched-main-count {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.sched-day-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sched-card {
+  display: grid;
+  grid-template-columns: 72px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: var(--bg-elevated, transparent);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.sched-card:hover {
+  border-color: var(--accent, #3b82f6);
+}
+.sched-card.st-upcoming {
+  border-left-color: #3b82f6;
+}
+.sched-card.st-ongoing {
+  border-left-color: #10b981;
+}
+.sched-card.st-ended {
+  border-left-color: #9ca3af;
+}
+.sched-card.st-cancelled {
+  border-left-color: #ef4444;
+  opacity: 0.7;
+}
+.sched-card-time {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.sched-card-title {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sched-card-status {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.sched-empty {
+  padding: 32px 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.sched-stub {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.1);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.sched-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+.sched-dialog {
+  width: min(520px, 92vw);
+  max-height: 86vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sched-form-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.sched-form-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.sched-form-row > div {
+  flex: 1;
+  min-width: 160px;
+}
+.sched-detail-line {
+  font-size: 13px;
+  color: var(--text);
+}
+.sched-detail-notes {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.08);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+.sched-badge {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.16);
+  color: var(--accent, #3b82f6);
+  font-size: 11px;
+}
+.sched-rsvp {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.sched-rsvp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.sched-rsvp-name {
+  min-width: 72px;
+  font-size: 12px;
+}
+.sched-copy-row {
+  display: flex;
+  justify-content: flex-end;
+}
+.icon-btn.sm {
+  width: 24px;
+  height: 24px;
+  font-size: 13px;
+}

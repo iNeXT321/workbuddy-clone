@@ -10,6 +10,7 @@ import TerminalPanel from './components/TerminalPanel'
 import PermissionDialog from './components/PermissionDialog'
 import TaskSearchOverlay from './components/TaskSearchOverlay'
 import AutomationPanel from './components/AutomationPanel'
+import SchedulePanel from './components/SchedulePanel'
 import Toaster from './components/Toaster'
 
 export default function App() {
@@ -32,6 +33,8 @@ export default function App() {
   const [pendingTab, setPendingTab] = useState<string | null>(null)
   // 定时任务面板（对齐 automation.*）
   const [showAutomation, setShowAutomation] = useState(false)
+  // 日程 / 日历面板（对齐 home.schedule.*）
+  const [showSchedule, setShowSchedule] = useState(false)
 
   // 新建工作空间：调主进程真实建目录，失败按 taskStarter.createWorkspace.toast.failed 提示
   const createWorkspace = async () => {
@@ -80,6 +83,9 @@ export default function App() {
       if (e.key === 'Escape') {
         if (showTaskSearch) return setShowTaskSearch(false)
         if (showAutomation) return setShowAutomation(false)
+        // 日程面板自行逐层处理 Esc（表单 → 删除确认 → 详情卡 → 面板），
+        // 这里只让出控制权，不直接关闭，否则一次 Esc 会跳层
+        if (showSchedule) return
         if (showCreateWs) return setShowCreateWs(false)
         if (showPermission) return setShowPermission(false)
         if (showSettings) return setShowSettings(false)
@@ -111,7 +117,7 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showSettings, app.streaming, showTaskSearch, showCreateWs, showAutomation])
+  }, [showSettings, app.streaming, showTaskSearch, showCreateWs, showAutomation, showSchedule])
 
   return (
     <div className="app">
@@ -142,6 +148,9 @@ export default function App() {
           <div className="topbar-actions">
             <button className="icon-btn" onClick={() => setShowAutomation(true)} title={t('automation.title')}>
               ⏱
+            </button>
+            <button className="icon-btn" onClick={() => setShowSchedule(true)} title={t('home.schedule.myCalendar')}>
+              ▤
             </button>
             <button className="icon-btn" onClick={() => void app.startNewSession()} title={t('sessionSeparator.label')}>
               ✦
@@ -245,6 +254,7 @@ export default function App() {
         />
       )}
       {showAutomation && <AutomationPanel onClose={() => setShowAutomation(false)} />}
+      {showSchedule && <SchedulePanel onClose={() => setShowSchedule(false)} />}
       {showCreateWs && (
         <div className="modal-overlay" onClick={() => setShowCreateWs(false)}>
           <div className="modal dialog" onClick={(e) => e.stopPropagation()}>

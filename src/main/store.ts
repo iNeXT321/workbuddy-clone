@@ -9,9 +9,11 @@ import type {
   SessionSeparator,
   ConversationOrigin,
   Automation,
-  AutomationRun
+  AutomationRun,
+  ScheduleEvent
 } from '../shared/types'
 import { nextRun } from '../shared/schedule'
+import { DEFAULT_CALENDAR_DEFAULTS } from '../shared/scheduleEvent'
 
 /**
  * 本地存储层 —— 对齐 WorkBuddy 本体的 node:sqlite 用法：
@@ -107,6 +109,29 @@ export class Store {
         test INTEGER NOT NULL DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS idx_runs_automation ON automation_runs(automation_id);
+      -- 日程 / 日历（对齐 home.schedule.*，676 条）
+      CREATE TABLE IF NOT EXISTS schedule_events (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        start_at INTEGER NOT NULL,
+        end_at INTEGER NOT NULL,
+        all_day INTEGER NOT NULL DEFAULT 0,
+        location TEXT,
+        description TEXT,
+        organizer TEXT,
+        participants TEXT,
+        reminder TEXT,
+        attachments TEXT,
+        calendar TEXT,
+        source TEXT,
+        kind TEXT,
+        cancelled INTEGER NOT NULL DEFAULT 0,
+        repeat TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_events_start ON schedule_events(start_at, end_at);
+      CREATE INDEX IF NOT EXISTS idx_events_source ON schedule_events(source);
     `)
 
     // 兼容旧库：老版本 messages 表无 attachments 列，补列（ALTER 幂等失败则忽略）
@@ -357,6 +382,141 @@ export class Store {
     this.db
       .prepare('DELETE FROM separators WHERE conversation_id = ? AND created_at >= ?')
       .run(conversationId, timestamp)
+  }
+
+  // ---------- 日程 / 日历（对齐 home.schedule.*） ----------
+  /**
+   * 列出日程 —— 时间区间过滤（日历把区间内的日程铺到月视图）。
+   * `source` 命中时按来源组过滤（对齐 sidebar.managed/channels/subscribed）。
+   */
+  listEvents(opts: { from?: number; to?: number; source?: string; includeCancelled?: boolean } = {}): ScheduleEvent[] {
+    const where: string[] = []
+    const args: Array<string | number> = []
+    // 与区间有交叠：start < to && end >= from
+    if (opts.to !== undefined) {
+      where.push('start_at <= ?')
+      args.push(opts.to)
+    }
+    if (opts.from !== undefined) {
+      where.push('end_at >= ?')
+      args.push(opts.from)
+    }
+    if (opts.source) {
+      where.push('source = ?')
+      args.push(opts.source)
+    }
+    if (!opts.includeCancelled) where.push('cancelled = 0')
+    const sql = `SELECT * FROM schedule_events${where.length ? ' WHERE ' + where.join(' AND ') : ''} ORDER BY start_at ASC`
+    const rows = this.db.prepare(sql).all(...args) as Array<Record<string, unknown>>
+    return rows.map((r) => this.rowToEvent(r))
+  }
+
+  getEvent(id: string): ScheduleEvent | null {
+    const row = this.db.prepare('SELECT * FROM schedule_events WHERE id = ?').get(id) as
+      | Record<string, unknown>
+      | undefined
+    return row ? this.rowToEvent(row) : null
+  }
+
+  private rowToEvent(r: Record<string, unknown>): ScheduleEvent {
+    return {
+      id: String(r.id),
+      title: String(r.title),
+      startAt: Number(r.start_at),
+      endAt: Number(r.end_at),
+      allDay: !!r.all_day,
+      location: (r.location as string) ?? undefined,
+      description: (r.description as string) ?? undefined,
+      organizer: (r.organizer as string) ?? undefined,
+      participants: r.participants ? (JSON.parse(String(r.participants)) as ScheduleEvent['participants']) : undefined,
+      reminder: (r.reminder as ScheduleEvent['reminder']) ?? undefined,
+      attachments: r.attachments ? (JSON.parse(String(r.attachments)) as string[]) : undefined,
+      calendar: (r.calendar as string) ?? undefined,
+      source: (r.source as ScheduleEvent['source']) ?? undefined,
+      kind: (r.kind as ScheduleEvent['kind']) ?? undefined,
+      cancelled: !!r.cancelled,
+      repeat: r.repeat ? (JSON.parse(String(r.repeat)) as ScheduleEvent['repeat']) : undefined,
+      createdAt: Number(r.created_at),
+      updatedAt: Number(r.updated_at)
+    }
+  }
+
+  /** 新建 / 保存日程（对齐 toast.createSuccess / saved）；存在同 id 则更新 */
+  saveEvent(input: ScheduleEvent & { createdAt?: number }): ScheduleEvent {
+    const now = Date.now()
+    const existing = this.getEvent(input.id)
+    const vals = [
+      input.title,
+      input.startAt,
+      input.endAt,
+      input.allDay ? 1 : 0,
+      input.location ?? null,
+      input.description ?? null,
+      input.organizer ?? null,
+      input.participants ? JSON.stringify(input.participants) : null,
+      input.reminder ?? null,
+      input.attachments ? JSON.stringify(input.attachments) : null,
+      input.calendar ?? null,
+      input.source ?? null,
+      input.kind ?? null,
+      input.cancelled ? 1 : 0,
+      input.repeat ? JSON.stringify(input.repeat) : null
+    ]
+    if (existing) {
+      this.db
+        .prepare(
+          `UPDATE schedule_events SET title=?, start_at=?, end_at=?, all_day=?, location=?, description=?,
+           organizer=?, participants=?, reminder=?, attachments=?, calendar=?, source=?, kind=?,
+           cancelled=?, repeat=?, updated_at=? WHERE id=?`
+        )
+        .run(...vals, now, input.id)
+    } else {
+      this.db
+        .prepare(
+          `INSERT INTO schedule_events (title, start_at, end_at, all_day, location, description, organizer,
+           participants, reminder, attachments, calendar, source, kind, cancelled, repeat,
+           id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        )
+        .run(...vals, input.id, input.createdAt ?? now, now)
+    }
+    return this.getEvent(input.id)!
+  }
+
+  /** 删除日程 —— 对齐 `summary.delete`（deleteConfirmBody 承诺「从日历里消失」） */
+  deleteEvent(id: string): boolean {
+    const before = this.getEvent(id)
+    if (!before) return false
+    this.db.prepare('DELETE FROM schedule_events WHERE id = ?').run(id)
+    return true
+  }
+
+  /** 取消日程 —— 对齐 `summary.status.cancelled` / `detail.cancelEvent` */
+  cancelEvent(id: string): ScheduleEvent | null {
+    const e = this.getEvent(id)
+    if (!e) return null
+    return this.saveEvent({ ...e, cancelled: true })
+  }
+
+  /** 读取日历默认设置 —— 对齐 `settings.*`（无则回落默认值） */
+  getCalendarDefaults(): import('../shared/scheduleEvent').CalendarDefaults {
+    const row = this.db.prepare('SELECT value FROM kv WHERE key = ?').get('calendarDefaults') as
+      | { value: string }
+      | undefined
+    if (!row) return { ...DEFAULT_CALENDAR_DEFAULTS }
+    try {
+      return { ...DEFAULT_CALENDAR_DEFAULTS, ...(JSON.parse(row.value) as Partial<import('../shared/scheduleEvent').CalendarDefaults>) }
+    } catch {
+      return { ...DEFAULT_CALENDAR_DEFAULTS }
+    }
+  }
+
+  /** 保存日历默认设置 —— 对齐 `settings.save` / `settings.saveFailed` */
+  saveCalendarDefaults(patch: Partial<import('../shared/scheduleEvent').CalendarDefaults>): import('../shared/scheduleEvent').CalendarDefaults {
+    const next = { ...this.getCalendarDefaults(), ...patch }
+    this.db
+      .prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+      .run('calendarDefaults', JSON.stringify(next))
+    return next
   }
 
   // ---------- 定时任务（对齐 automation.*） ----------

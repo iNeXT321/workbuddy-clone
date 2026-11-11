@@ -102,18 +102,19 @@ MediaPreviewContext     Icons
 | 包名 | `@genie/workbuddy-desktop` | `workbuddy-clone` | P1 |
 | 版本 | 5.9.3 | 0.1.0 | 可接受 |
 | 入口 | `main/index.js`（单文件 310KB，rolldown） | `src/main/index.ts`（源文件） | 可接受 |
-| 状态管理 | **zustand**（chunk 命中 1 次，事实） | 手写 `useApp` hook | P1（需对齐） |
-| 数据层 | `node:sqlite` + database-factory | `node:sqlite` DatabaseSync | ✅ 已对齐核心 |
+| 状态管理 | **zustand**（chunk 命中 1 次，事实） | **zustand 5.x**（`useApp` / `useToast` / `useScheduleEvents` 等 3+ store） | ✅ **已对齐**（第十一轮前已替换，见 §5.6 修订） |
+| 数据层 | `node:sqlite` + database-factory | `node:sqlite` DatabaseSync（WAL） | ✅ 已对齐核心 |
 | 凭据保护 | safeStorage（credential-protection） | safeStorage（store.ts） | ✅ 已对齐核心 |
-| LLM 调用 | 未确认主进程形态 | 主进程 fetch + SSE | P1（待确认） |
+| LLM 调用 | 未确认主进程形态 | 主进程 fetch + SSE（`streamChat`） | P1（待确认） |
 | Markdown | react-markdown + remark-gfm + **remark-math + KaTeX**（chunk 命中，事实） | react-markdown + remark-gfm + remark-math + rehype-katex | ✅ 已对齐核心 |
-| 代码高亮 | **shiki**（697 个语言/主题懒加载 chunk，事实） | 无（原生 pre/code） | **P1（缺，需补）** |
-| 图表渲染 | **mermaid**（flowchart/sequence/class/gantt/state，事实） | 无 | **P2（缺）** |
-| 代码编辑器 | **monaco-editor**（codeEditor chunk，71 次命中，事实） | 依赖已装但未接入 | **P2（缺）** |
-| i18n | **自研**（无 i18next；15 语言细粒度 chunk：zh/en/es/th/ja/ko/fr/de/ru/pt/id/vi + locale emoji） | 自研轻量 i18n（zh-CN + en） | ✅ 已对齐核心（方式一致，语言数待扩展） |
+| 代码高亮 | **shiki**（697 个语言/主题懒加载 chunk，事实） | **shiki 4.x**（2 文件接入） | ✅ **已对齐**（见 §5.1 修订） |
+| 图表渲染 | **mermaid**（flowchart/sequence/class/gantt/state，事实） | **mermaid 12.x**（2 文件接入） | ✅ **已对齐**（见 §5.1 修订） |
+| 代码编辑器 | **monaco-editor**（codeEditor chunk，71 次命中，事实） | 依赖已装但未接入（缺「AI 代码改动审阅」业务场景） | P2（缺，见 GAP-011） |
+| i18n | **自研**（无 i18next；15 语言细粒度 chunk：zh/en/es/th/ja/ko/fr/de/ru/pt/id/vi + locale emoji） | 自研轻量 i18n（zh-CN + en；`zh-cn` 为权威源，en 语义补齐） | ✅ 已对齐核心（方式一致，语言数待扩展） |
 | 主题 | **useTheme / appearance / theme** 三 chunk（支持跟随系统） | 支持 light/dark/system | ✅ 已对齐 |
-| 终端 | node-pty | 无 | P1（缺） |
-| IM 渠道 | 飞书/钉钉/企微/IM | 无 | P1（缺） |
+| 终端 | node-pty | **@lydell/node-pty + @xterm/xterm**（2/1 文件） | ✅ **已对齐**（见 §5.5） |
+| 日程 / 日历 | `home.schedule.*`（676 条） | 本轮复刻（模型 + 存储 + IPC + 面板 + 设置） | ✅ **本轮已对齐核心**（见 §5.8） |
+| IM 渠道 | 飞书/钉钉/企微/IM | 无 | P1（缺，见 GAP-007） |
 | 遥测 | aegis + galileo | 无 | P2 |
 
 ### 5.1 补证明细（**二次修订**，证据来源：asar 反解 + renderer chunk 文件名全集）
@@ -352,6 +353,80 @@ MediaPreviewContext     Icons
 
 - `automation.datasource.*`（68+35+12+12+8+6+6 ≈ 147 条，数据源/Webhook/同步模式）、`automation.modal.wecomBotSource.*`（28 条，企微 BOT 绑定）属**连接器 / 企微渠道域**，与 deferred 的 GAP-007 同源，本轮不复刻。
 
+### 5.8 第九次补证：日程 / 日历域（home.schedule.*，第十二轮监督依据）
+
+证据来源：i18n 词典 `home.schedule.*` 命名空间（**640 条**，`home` 命名空间 676 条中除 `home.aiDisclaimer` 外全部属此域）。该域在复刻体中原为**完全空白**，故本轮同第十一轮，为「从 0 建域」。
+
+> ⚠️ 命名空间归属提示：`home.*` 的 640 条**全部**是 `home.schedule.*`，没有别的 `home.*` 业务子域。这意味着 `home` 命名空间即「日历域」，不存在漏项。
+
+**T. 面板骨架与入口（事实）—— 顶层键 + `shell.*`**
+
+- **入口（事实）**：`myCalendar`=`我的日历`、`viewAll`=`查看我的日历`、`teamCalendar`=`团队日历` → 日历是**独立全屏视图**，可从多处进入。
+- **视图骨架（事实）**：`back`=`返回`、`today`=`今天 · {count} 件事`、`empty`=`今天没有安排`、`allDay`=`全天`、`miniList.title`=`当日日程`。
+- **底部区块（事实）**：`shell.remindersTitle`=`事件与提醒`、`shell.changelogTitle`=`变更记录`（`changelogTag`=`可追溯`）、`shell.followupTitle`=`WorkBuddy 持续跟进`、`shell.followupPrivacy`=`按成员权限读取资料；个人日历只读取忙闲`。
+- **推论（强）**：`followupPrivacy` 明确「个人日历只读取忙闲」——原版的**忙闲（free/busy）读取是权限隔离的**，复刻据此只需展示自己侧状态。
+
+**U. 侧栏与视图（事实，136 条）—— `sidebar.*`**
+
+- **月历（事实）**：`monthTitle`=`{year}年{month}月`、`prevMonth`=`上个月`、`nextMonth`=`下个月`、`collapse`=`收起日历`、`expand`=`展开日历`、`title`=`日期与日历`、`collapseSidebar`/`expandSidebar`=`收起边栏`/`展开边栏`。
+- **三个来源分组（事实）**：`managed`=`我管理的`、`channels`=`所在频道`、`subscribed`=`我订阅的`；另有 `myScheduleGroup`=`我的日程`（全部）—— 与 `i18n` 实测一致：**`myScheduleGroup` 在 `sidebar.*` 下**，不在顶层（本项目一处误写 `home.schedule.myScheduleGroup` 已修正）。
+- **叠加开关（事实）**：`overlayPersonal`=`叠加我的日程`、`overlayTeamTodos`=`叠加团队待办`、`myTodos` / `overlayMyTodos`=`叠加我的待办`；`todoGroup`=`待办`、`myTodosGroup`=`我的待办`、`onlyVisibleToMe`=`仅我可见`、`todoIncomplete`=`未加载完`、`todoTruncated`=`已截断`。
+- **搜索（事实，20 条）**：`searchPlaceholder`=`搜索日程`、`searchClear`=`清除搜索`、`searchEmpty`=`未找到匹配日程`、`searching`=`正在搜索…`、`searchBuilding`=`搜索索引准备中，请稍后再试`、`searchUnavailable`=`搜索暂不可用`、`searchDisabled`=`搜索已关闭`、`searchNoCalendar`=`请先勾选要搜索的日历`、`searchRateLimited`/`searchRangeUnsupported`/`searchCursorStale`/`searchForbidden`/`searchParamInvalid`/`searchFailed`、`searchLoadMore`/`searchContinue`/`searchRetry`、`searchFreshness`=`近期变更可能未出现在搜索中`、`searchToday`=`今天`。
+- **每日历操作（事实）**：`addCalendar`=`添加日历`、`createCalendar`=`新建日历`、`subscribeCalendar`=`订阅日历`、`thirdPartyCalendar`=`第三方日历`、`renameCalendar`=`重命名`、`openChannel`=`进入频道`、`changeColor`/`changeColorFor`、`deleteCalendar`=`删除`、`unsubscribeCalendar`=`取消订阅`、`untitledCalendar`=`未命名日历`、`primaryUndeletableHint`=`主日历用于接收邀请，不能删除`。
+- **第三方日历：原文自认未开放（事实）**：`thirdPartyDialog.notAvailable`=`第三方日历连接暂未开放`、`providers.wecom/outlook/google/apple`、`connectForm.hint`（企微同步账号密码获取路径）、`reconnect`/`disabled`/`comingSoon`=`即将支持`；`subscribeDialog.unavailable`=`该日历已不可用`。
+- **错误族（事实）**：`calendarError.nameInvalid`=`日历名称需为 1–64 个字符`、`nameConflict`=`已有同名日历，换一个名字试试`、`quotaExceeded`、`renameNotAllowed`=`频道日历的名称跟随频道，无法在这里修改`、`primaryUndeletable`=`主日历不能删除`、`notAvailable`=`当前环境暂未开放自建日历`。
+
+**V. 日程模型与摘要（事实）—— `summary.*` / `field.*` / `kind.*` / `status.*`**
+
+- **状态（事实，4 态）**：`summary.status.upcoming`=`待开始`、`ongoing`=`进行中`、`ended`=`已结束`、`cancelled`=`已取消`；另有 `status.confirmed`=`已确认`（`status.*` 顶层 2 条属**创建状态**）。
+- **首行（事实）**：`summary.kindLine`=`日程 {status}`、`summary.kind`=`日程`；类型 `kind.meeting`=`会议`、`kind.timeBlock`=`时间安排`、`kind.automation`=`自动化`、`kind.reminder`=`提醒`。
+- **时间行模板（事实，4 条，**逐字**）**：`summary.when`=`{year} 年 {month} 月 {day} 日 · {startClock}—{endClock}`、`whenCrossDay`=`{year} 年 {month} 月 {day} 日 {startClock} — {endMonth} 月 {endDay} 日 {endClock}`、`whenAllDay`=`{year} 年 {month} 月 {day} 日 · 全天`、`whenAllDaySpan`=`{year} 年 {month} 月 {day} 日 — {endMonth} 月 {endDay} 日 · 全天`。
+- **推论（强，易错点）**：单日模板内是 **em dash（—）紧贴时刻**，跨日模板内是 **` — `（前后带空格）**；且「年/月/日」数字与「 年 / 月 / 日 」字之间**有空格**。二者不等价，复刻时不可统一化，否则逐字不一致。
+- **提醒（事实）**：`summary.reminder`=`提醒`、`reminderNone`=`无`；档位命名只在**新建表单**的 `create.reminder.*` 出现（none/atStart/15/60/1440）→ 摘要行复用表单档位名，`none` 才用 `reminderNone`。
+- **参与人（事实）**：`summary.participantCount`=`已邀请 {count} 位参与人：`（**含尾冒号**，后面紧跟名单）、`invited`=`已邀请参与人`、`onlySelf`=`仅自己参与`、`organizerBadge`=`组织者`、`self`=`我`。
+- **地点/说明（事实）**：`summary.locationFallback`=`日程安排`、`notesEmpty`=`暂无日程说明`、`notesEmptyHint`=`可在编辑时补充说明与附件`、`summary.notes`=`日程说明`。
+- **在线会议/会议室：原文自认未接入（事实）**：`summary.noOnlineMeeting`=`无在线会议`、`noOnlineMeetingHint`=`本日程没有在线会议`、`meetingEnded`=`会议已结束。`、`detail.joinMeeting`=`加入会议`、`detail.linkedMeeting`=`关联会议`、`detail.meeting.tencent`=`腾讯会议`、`meeting.pending`=`会议链接生成中`、`meeting.failed`=`会议创建失败，可稍后重试`、`meeting.cancelled`=`会议已取消`；`detail.meetingRoom.{PENDING,FAILED,UNKNOWN,RELEASING}`=`预订中`/`预订失败`/`状态待确认`/`释放中`。
+- **字段（事实）**：`field.title/start/end/location/meetingRoom/organizer/calendar/attachment/reminder/description/timeZone/status`=`标题/开始时间/结束时间/地点/会议室/组织者/日历/附件/提醒/描述/时区/日程状态`。
+- **操作（事实）**：`summary.delete`=`删除日程`、`edit`=`编辑日程`、`share`=`分享日程`、`more`=`更多`、`copyMeeting`=`复制会议信息`、`copied`=`已复制`、`shareCopied`=`日程信息已复制`、`copyFailed`=`复制失败，请重试`。
+
+**W. 创建 / 编辑表单（事实，202 条）—— `create.*`**
+
+- **模式（事实）**：`create.mode.form`=`表单模式`、`mode.formHint`=`与 @WorkBuddy 自然语言草稿共用全部字段`、`mode.switchToNl`=`切换到自然语言`；`create.formHint`=`表单与自然语言使用同一份日程字段。` → **表单与 NL 草稿是同一份字段**，NL 只负责填草稿。
+- **自然语言（事实）**：`natural.title`=`新建日程`、`heading`=`告诉 WorkBuddy 你的日程安排`、`description`=`可以描述时间、参与人、主题和会议方式，随后在表单中检查与补充。`、`inputHelper`=`WorkBuddy 将把识别到的内容填入创建表单`、`trySay`=`试试这样说`、`example.personal`=`明天上午 10 点安排一小时方案评审`、`parseFailed`=`没能理解这段描述，请改写后再试`、`extractInternal`=`没能生成配置，请改用表单创建`、`extractUnavailable`=`生成服务暂时不可用，可以重试或直接打开表单`、`promptTooLong`=`描述最多 500 字`。
+- **时区/日历/附件（事实）**：`field.timezone`=`时区`、`timezone.current`=`（当前）`、`field.calendar`=`日历`、`calendarFallback`=`当前日历`、`field.attachment`=`附件`、`addAttachment`=`添加附件`、`attachment.tooMany`=`最多添加 {count} 个附件`、`attachment.unavailable`=`当前环境还不能添加附件`。
+- **提醒档位（事实，5 档）**：`create.reminder.none`=`无提醒`、`atStart`=`开始时`、`15`=`15 分钟前`、`60`=`1 小时前`、`1440`=`1 天前`。
+- **重复（事实，权威前缀是 `create.recurrence.*` 而非 `repeat.*`）**：`none`=`不重复`、`daily`=`每天`、`weekly`=`每周`、`monthly`=`每月`、`weekday`=`每个工作日（周一至周五）`、`weeklyOn`=`每{weekday}`、`monthlyOn`=`每月 {day} 日`、`monthlyNth`=`每月第 {n} 个{weekday}`、`yearlyOn`=`每年 {month} 月 {day} 日`、`custom`=`自定义…`、`customTitle`=`自定义重复`、`customSummary`=`每 {interval} {unit}`、`never`=`永不截止`、`until`=`截止日期`、`unit.{daily,weekly,monthly,yearly}`=`天/周/个月/年`。
+- **时长（事实）**：`create.duration.minutes`=`{count} 分钟`、`hour`=`1 小时`、`hours`=`{count} 小时`、`customEnd`=`自定义结束时间`、`switchToEnd`/`end.switchToDuration`=`切换到结束时间`/`切换到时长`。
+- **占位符（事实，**独立一族**）**：`create.placeholder.title`=`添加主题`、`placeholder.location`=`添加地点`、`placeholder.meetingRoom`=`添加会议室`、`placeholder.participants`=`添加联系人、邮件地址`、`placeholder.description`=`添加描述` —— **与 `summary.locationFallback` / `summary.notesEmpty` 不同键**，不可混用（本轮一次实现误用后者，已修正）。
+- **校验（事实，8 条）**：`create.error.titleTooLong`=`标题不能超过 512 字`、`invalidRange`=`结束时间需晚于开始时间`、`startNotAligned`=`开始时间只能选 15 分钟的倍数`、`durationInvalid`=`时长需为 15 分钟的倍数`、`locationTooLong`=`地点不能超过 512 字`、`participantsRequired`=`至少邀请一位参与人`、`participantsLimit`=`参与人超出上限`、`participantVersionMissing`。
+- **顶层校验（事实）**：`titleRequired`=`请填写标题`、`endAfterStart`=`结束时间需晚于开始时间`、`untitled`=`未命名日程` —— 这 3 条是**顶层键**，不属 `create.error.*`。
+- **原文自认未实现的表单能力（事实）**：`create.hint.participantsLocked`=`参与人变更暂未实现`、`create.onlineMeetingHint`=`创建后自动生成腾讯会议链接`、`create.meetingMinutesHint`=`会议结束后生成纪要与转写内容`、`create.kindHint`=`当前只开放会议。时间安排、自动化、提醒要等对应契约。`、`create.noParticipantMatch`/`participantSearching`、`orgPickerFailed`=`打不开企业通讯录，请确认已登录后再试`、`busy.othersPending`=`其他人的忙闲暂未实现`、`busy.unknownHint`=`个人日历看不到他人忙闲；非本频道成员也会显示为未知`。
+- **会议室子域（事实，约 60 条）**：`create.meetingRoom.*`（city/building/floor/loading/empty/booked/equipment.{tv,phone,projector,whiteboard,video}/minSeats/durationFilter/...）+ `create.meetingRoom.seriesUnsupported`=`重复日程暂不支持预订会议室`、`window.past/outsideHours/tooFar`、`create.error.meetingRoomReschedule`=`已预订会议室的日程请先释放房间再改期`、`drag.roomBlocked.*` —— **原文自身标注未实现**（`hint.meetingRoom`=`暂未实现`），复刻以桩提示对齐。
+
+**X. 场次范围与编辑确认（事实）—— `occurrence.*` / `edit.confirm.*` / `drag.*`**
+
+- **场次范围（事实，3 档）**：`occurrence.scope.this`=`仅本次`（`thisHint`=`只改这一次，系列里其他场保持原样`）、`thisAndFuture`=`本次及以后`（`thisAndFutureHint`=`从这一次起，后面的场次一起改`）、`entire`=`全部日程`（`entireHint`=`整个系列一起改，含已经过去的场次`）；标题 `titleUpdate`=`修改重复日程` / `titleCancel`=`取消重复日程`；`ok`/`cancel`=`确定`/`取消`。
+- **编辑确认（事实）**：`edit.confirm.title`/`ok`/`cancel`=`确认修改`/`确认修改`/`返回修改`、`field.time`=`时间`、`field.participantsAdded`=`新增参与人`、`field.participantsRemoved`=`移除参与人`、`peopleCount`=`{count} 人`、`notify`=`保存后将通知 {count} 位参与人`、`notifyNobody`=`保存后不会通知其他人`。
+- **推论（强）**：重复日程编辑/取消**必须选择作用范围**，说明原版模型保留**系列粒度**（不是把系列摊平成独立事件）—— 复刻据此在 `ScheduleEvent.repeat` 上保留 `kind/weekdays/until` 并实现 `expandOccurrences` 展开，而非物化。
+
+**Y. 参与状态 / 投递 / 创建状态（事实）—— `rsvp.*` / `delivery.*` / `creation.*` / `participation.*`**
+
+- **RSVP（事实，6 条）**：`rsvp.title`=`我的参与状态`、`hint`=`只影响我的个人邀请`、`accept`=`接受`、`tentative`=`待定`、`decline`=`拒绝`、`needsAction`=`未响应`。
+- **投递（事实）**：`delivery.PENDING/SUCCEEDED/FAILED/DEAD`=`投递中`/`已投递`/`投递失败`/`投递终止`、`delivery.status`=`状态`、`pending`=`待投递`、`dead`=`终止`；详情侧 `detail.deliveryPending`=`待同步至 {count} 人`、`deliverySucceeded`=`已同步`、`deliveryFailed`/`deliveryDead`。
+- **创建状态（事实，20 条）**：`creation.title`=`日程创建状态`、`successTitle`=`日程创建成功`、`written`=`已写入`（`writtenValue`=`日历对象`、`writtenTeam`=`团队日历对象`、`writtenPersonal`=`个人日历对象`）、`sent`/`notSent`/`sendFailed`=`已发送`/`未发送`/`发送失败`（`sentValue`=`{count} 位正式受邀`）、`linked`=`已关联`（`linkedValue`=`来源话题与变更记录`）。
+- **来源与退出（事实）**：`origin.HUMAN_UI`=`频道成员创建`、`origin.WORKBUDDY_CONFIRMED_PROPOSAL`=`WorkBuddy 确认提议`；`participation.left`=`已退出`；`scope.channel`=`频道可见 · {count} 人正式受邀`。
+- **删除/退出的后果说明（事实）**：`summary.deleteConfirmTitle`=`删除日程`、`deleteConfirmBody`=`删除后参与人会收到取消通知，这条日程从日历里消失。`、`leaveConfirmBody`=`退出后你不再是参与人，这条日程会从你的日历里移除。`
+
+**Z. 日历设置与桩标记（事实）—— `settings.*`（69 条）/ `hint.*`（9 条）/ `weekday.*`（7 条）**
+
+- **设置定位（事实）**：`settings.entry`/`title`=`日历设置`、`subtitle`=`仅设置新建日程的默认行为。` → 设置只影响**新建**的默认值，不改动已有日程。
+- **设置项（事实）**：`field.duration`=`日程默认时长`（`duration.{15,30,60,90,120,180}` 六档）、`field.timedReminder`=`非全天日程默认提醒`（`timedReminder.{none,atStart,min5,min15,min30,hour1,day1}` 七档）、`field.allDayReminder`=`全天日程默认提醒`（`allDayReminder.{none,sameDay0800,sameDay0900,prevDay1800,prevDay0900,days20900,week10900}` 七档）、`field.weekStart`=`每周第一天`、`field.showLunar`=`是否显示农历`、`field.showTimezoneOnCreate`=`新建日程时显示时区`；错误 `saveFailed`、`versionConflict`=`设置刚在其他端改过，已刷新为最新，请再保存一次`。
+- **同步子域：原文自认未开放（事实）**：`settings.sync.*`（约 30 条）含 `mac`=`同步至 Mac 系统日历`、`windows`=`同步至 Windows 系统日历`、`others`=`同步至手机日历等其他应用`、`caldavHint`/`exchangeHint`、`username`/`password`/`getPassword`、`passwordHint`（含**三行换行**，注入 i18n 时须转义 `\n`，否则产生未闭合字符串）、`recordTitle`/`emptyRecords`/`issueLimit`、`notAvailable`=`该功能暂未开放`。
+- **桩标记三兄弟（事实，复刻的对齐要点）**：`hint.notImplemented`=`暂未实现`、`hint.noContract`=`当前版本暂无接口，仅展示效果`、`hint.notWired`=`接口已定义，暂未接入`；另有 `hint.noJump`=`仅展示引用，暂不跳转`、`hint.meetingRoom`=`暂未实现`、`hint.onlineMeetingUnavailable`=`当前环境未接入在线会议`、`hint.onlineMeetingLocked`=`已创建的日程暂不支持改在线会议`、`hint.meetingMinutesUnavailable`=`当前环境未开放会后纪要`、`hint.relatedTask`=`关联任务要用 WB_TASK 链接类型，当前契约只有 SOURCE_TOPIC / EXECUTION_RECORD`。
+- **推论（强）**：原文**显式标注自身未实现的部分**（在线会议、会议室、会后纪要、第三方日历、同步到系统日历、团队待办叠加）。因此「复刻这些桩文案」**本身就是对齐**，而非偷工 —— 若复刻去真接腾讯会议 / 会议室预约，反而与原文行为不一致。
+- **星期（事实）**：`weekday.0`~`6`=`周日`~`周六`（与 JS `getDay()` 同序）。
+- **其余子域（事实，范围外）**：`attachment.permission.*`（8 条）、`feed.*`（4 条，含 `unavailableTag`=`暂未接入`）、`suggestion.*`（6 条，含 `unavailable`=`行动项建议接口暂未接入`）、`detail.notes/linkedMeeting/executionLink`、`subscriptionPeek.*`、`contextMenu.*`、`drag.*`、`miniList`。
+
 ## 6. 本基线文件的边界与限制
 
 - 本基线基于**静态产物清单 + 少量入口源码**，未完整反编译 300+ 模块。
@@ -381,11 +456,13 @@ MediaPreviewContext     Icons
 12. ✅ P1：消息流健壮性 + 工作空间 + 模型能力门控 + 上下文档位（第九轮，GAP-046~052）
 13. ✅ P1/P2：会话状态角标 + 工作空间分组 + 全局任务搜索 + 来源标记 + 运行中关窗确认（第十轮，GAP-053~057）
 14. ✅ P1：定时任务域（调度模型 + 存储与主进程调度器 + 面板与创建表单 + 运行记录）（第十一轮，GAP-058~061）
+15. ✅ P1：日程 / 日历域（日程模型与摘要/重复/状态推导 + 存储与 IPC + 日历侧栏与月视图 + 创建编辑表单与详情卡与日历设置）（第十二轮，GAP-062~065）
 
 **待决策（架构级长尾，需范围共识）**
-15. ⏳ P2：monaco 代码变更审阅器（diff/edit/apply）—— 原版 codeEditor chunk 的核心业务是「AI 代码改动审阅」，需在复刻引入 Artifact/代码编辑场景后才成立
-16. ⏳ P1：IM 渠道（飞书/钉钉/企微）—— 含 `automation.datasource.*`（147 条）与 `automation.modal.wecomBotSource.*`（28 条）
-17. ⏳ P2：遥测 / 自更新 / 守护进程
-18. ⏳ P2：`conversation.shareFile.*`（119 条，属协同域 collab）与代码库来源工作空间（Git 集成）
+16. ⏳ P2：monaco 代码变更审阅器（diff/edit/apply）—— 原版 codeEditor chunk 的核心业务是「AI 代码改动审阅」，需在复刻引入 Artifact/代码编辑场景后才成立（GAP-011）
+17. ⏳ P1：IM 渠道（飞书/钉钉/企微）—— 含 `automation.datasource.*`（147 条）与 `automation.modal.wecomBotSource.*`（28 条）（GAP-007）
+18. ⏳ P2：遥测 / 自更新 / 守护进程
+19. ⏳ P2：`conversation.shareFile.*`（119 条，属协同域 collab）与代码库来源工作空间（Git 集成）（GAP-049）
+20. ⏳ P2：日程域外延子域（会议室预约 `create.meetingRoom.*` 约 60 条、腾讯会议在线会议、同步至系统日历 `settings.sync.*` 约 30 条、团队待办叠加 `sidebar.overlayTeamTodos`、第三方日历 `thirdPartyDialog.*` 约 40 条）—— 原文自身均已标注未实现 / 未开放，复刻当前以桩提示对齐
 
 > 长尾项建议：先不追求 100% 一致，而是按「核心链路 → 能力外延」逐层推进。每轮由监督角色产出新 GAP，开发角色修复后复检，直至本阶段范围内 0 open。
